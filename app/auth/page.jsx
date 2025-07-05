@@ -27,7 +27,7 @@ function Login() {
             className="w-[400px]"
           />
 
-          <h2 className="text-2xl font-bold text-center">Welcome to Ai recruitment</h2>
+          <h2 className="text-2xl font-bold text-center mt-5">Welcome to Ai recruitment</h2>
           <p className="text-gray-500 text-center">Sign in with google authentication</p>
           <Button className="mt-7 w-full" onClick={signInWithGoogle}>Login with Google</Button>
         </div>
