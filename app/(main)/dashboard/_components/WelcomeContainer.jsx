@@ -5,7 +5,7 @@ import Image from 'next/image'
 function WelcomeContainer() {
   const { user } = useUser()
   return (
-    <div className='bg-white p-5 rounded-xl flex items-center justify-between'>
+    <div className='m-5 bg-white p-5 rounded-xl flex items-center justify-between'>
       <div >
         <h2 className='text-lg font-bold'>
           Welcome Back {user?.name ?? 'name'}
