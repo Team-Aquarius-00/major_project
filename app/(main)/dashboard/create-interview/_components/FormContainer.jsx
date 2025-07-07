@@ -12,7 +12,7 @@ import { SideBarOptions, InterviewType } from '@/services/Constants'
 import { Button } from '@/components/ui/button'
 import { ArrowRight } from 'lucide-react'
 
-function FormContainer({ onHandleInputChange }) {
+function FormContainer({ onHandleInputChange, GoToNext }) {
   const [interviewType, setInterviewType] = useState([])
   useEffect(() => {
     if (interviewType) {
@@ -75,9 +75,8 @@ function FormContainer({ onHandleInputChange }) {
           {InterviewType.map((type, index) => (
             <div
               key={index}
-              className={`hover:bg-secondary flex gap-2 items-center cursor-pointer p-1 px-2 bg-white border border-gray-300 rounded-2xl ${
-                interviewType.includes(type.title) && 'bg-blue text-primary'
-              }`}
+              className={`hover:bg-secondary flex gap-2 items-center cursor-pointer p-1 px-2 bg-white border border-gray-300 rounded-2xl ${interviewType.includes(type.title) && 'bg-blue text-primary'
+                }`}
               onClick={() => AddInterviewType(type.title)}
             >
               <type.icon className='h-6 w-6' />
@@ -86,7 +85,7 @@ function FormContainer({ onHandleInputChange }) {
           ))}
         </div>
       </div>
-      <div className='mt-7 flex justify-end'>
+      <div className='mt-7 flex justify-end' onClick={() => GoToNext()}>
         <Button>
           <ArrowRight />
           Generate Questions
