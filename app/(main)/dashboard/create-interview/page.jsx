@@ -4,7 +4,7 @@ import { ArrowLeft } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import React, { useState } from 'react'
 import FormContainer from './_components/FormContainer'
-import QuestionList from "./_components/QuestionList"
+import QuestionList from './_components/QuestionList'
 import { toast } from 'sonner'
 
 function CreateInterview() {
@@ -15,11 +15,20 @@ function CreateInterview() {
     setFormData((prev) => ({ ...prev, [field]: value }))
     console.log('Formdata', formData)
   }
+
+  const [isFormReady, setIsFormReady] = useState(false)
+
   const onGotoNext = () => {
-    if (!formData?.jobposition || !formData?.jobDescription || !formData.duration || !formData?.type) {
-      toast("Please fill all the details")
+    if (
+      !formData?.jobPosition ||
+      !formData?.jobDescription ||
+      !formData?.duration ||
+      !formData?.type
+    ) {
+      toast('Please fill all the details')
       return
     }
+    setIsFormReady(true)
     setStep(step + 1)
   }
   return (
@@ -32,7 +41,14 @@ function CreateInterview() {
         <h2 className='font-bold text-2xl'>Create New Interview</h2>
       </div>
       <Progress value={step * 33} className='my-5' />
-      {step == 1 ? <FormContainer onHandleInputChange={onHandleInputChange} GoToNext={() => onGotoNext()} /> : step == 2 ? <QuestionList formData={formData} /> : null}
+      {step === 1 ? (
+        <FormContainer
+          onHandleInputChange={onHandleInputChange}
+          GoToNext={() => onGotoNext()}
+        />
+      ) : step === 2 && formData &&isFormReady ? (
+        <QuestionList formData={formData} />
+      ) : null}
     </div>
   )
 }

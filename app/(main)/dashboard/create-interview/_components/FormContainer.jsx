@@ -37,13 +37,13 @@ function FormContainer({ onHandleInputChange, GoToNext }) {
           placeholder='eg. Full stack Developer'
           className='mt-2'
           onChange={(event) =>
-            onHandleInputChange('jobposition', event.target.value)
+            onHandleInputChange('jobPosition', event.target.value)
           }
         />
       </div>
 
       <div className='mt-5'>
-        <h2 className='text-sm font-medium'>Job Postion</h2>
+        <h2 className='text-sm font-medium'>Job Description</h2>
         <Textarea
           placeholder='Enter the description of Job Postion'
           className='mt-2 h-[150px]'
