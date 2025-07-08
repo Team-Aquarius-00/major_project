@@ -12,7 +12,7 @@ import { SideBarOptions, InterviewType } from '@/services/Constants'
 import { Button } from '@/components/ui/button'
 import { ArrowRight } from 'lucide-react'
 
-function FormContainer({ onHandleInputChange }) {
+function FormContainer({ onHandleInputChange, GoToNext }) {
   const [interviewType, setInterviewType] = useState([])
   useEffect(() => {
     if (interviewType) {
@@ -37,13 +37,13 @@ function FormContainer({ onHandleInputChange }) {
           placeholder='eg. Full stack Developer'
           className='mt-2'
           onChange={(event) =>
-            onHandleInputChange('jobposition', event.target.value)
+            onHandleInputChange('jobPosition', event.target.value)
           }
         />
       </div>
 
       <div className='mt-5'>
-        <h2 className='text-sm font-medium'>Job Postion</h2>
+        <h2 className='text-sm font-medium'>Job Description</h2>
         <Textarea
           placeholder='Enter the description of Job Postion'
           className='mt-2 h-[150px]'
@@ -75,9 +75,8 @@ function FormContainer({ onHandleInputChange }) {
           {InterviewType.map((type, index) => (
             <div
               key={index}
-              className={`hover:bg-secondary flex gap-2 items-center cursor-pointer p-1 px-2 bg-white border border-gray-300 rounded-2xl ${
-                interviewType.includes(type.title) && 'bg-blue text-primary'
-              }`}
+              className={`hover:bg-secondary flex gap-2 items-center cursor-pointer p-1 px-2 bg-white border border-gray-300 rounded-2xl ${interviewType.includes(type.title) && 'bg-blue text-primary'
+                }`}
               onClick={() => AddInterviewType(type.title)}
             >
               <type.icon className='h-6 w-6' />
@@ -86,7 +85,7 @@ function FormContainer({ onHandleInputChange }) {
           ))}
         </div>
       </div>
-      <div className='mt-7 flex justify-end'>
+      <div className='mt-7 flex justify-end' onClick={() => GoToNext()}>
         <Button>
           <ArrowRight />
           Generate Questions
