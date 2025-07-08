@@ -8,7 +8,7 @@ import { supabase } from '@/services/supabaseClient'
 import { v4 as uuidv4 } from 'uuid'
 import { useUser } from '@/app/Provider'
 
-function QuestionList({ formData }) {
+function QuestionList({ formData, onCreateLink }) {
   const [loading, setLoading] = useState(true)
   const [questionList, setQuestionList] = useState()
   const [saveLoading, setSaveLoading] = useState(false)
@@ -22,7 +22,7 @@ function QuestionList({ formData }) {
       formData.duration &&
       formData.type
     ) {
-      GenerateQuestionList()
+      // GenerateQuestionList()
     }
   }, [formData])
 
@@ -42,6 +42,7 @@ function QuestionList({ formData }) {
       .select()
     setSaveLoading(false)
     console.log(data)
+    onCreateLink(interview_id)
   }
   const GenerateQuestionList = async () => {
     setLoading(true)
@@ -87,7 +88,7 @@ function QuestionList({ formData }) {
       <div className='flex justify-end mt-5'>
         <Button className='' onClick={() => onFinish()} disabled={saveLoading}>
           {saveLoading && <Loader2 className='animate-spin' />}
-          Finish
+          Create Interview Link and Finish
         </Button>
       </div>
     </div>
