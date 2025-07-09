@@ -22,7 +22,7 @@ function QuestionList({ formData, onCreateLink }) {
       formData.duration &&
       formData.type
     ) {
-      // GenerateQuestionList()
+      GenerateQuestionList()
     }
   }, [formData])
 

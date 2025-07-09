@@ -32,7 +32,7 @@ function FormContainer({ onHandleInputChange, GoToNext }) {
   return (
     <div className='bg-white p-5 rounded-xl'>
       <div>
-        <h2 className='text-sm font-medium'>Job Postion</h2>
+        <h2 className='text-sm font-medium'>Job Position</h2>
         <Input
           placeholder='eg. Full stack Developer'
           className='mt-2'
