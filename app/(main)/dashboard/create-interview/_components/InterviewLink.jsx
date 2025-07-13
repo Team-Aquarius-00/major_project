@@ -92,7 +92,7 @@ function InterviewLink({ interview_id, formData, onCreateNewInterview }) {
 
         <Button onClick={onCreateNewInterview}>
           {' '}
-          <Plus /> Create New Interview Vosdike
+          <Plus /> Create New Interview
         </Button>
       </div>
     </div>

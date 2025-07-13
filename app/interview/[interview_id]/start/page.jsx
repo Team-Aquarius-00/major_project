@@ -3,8 +3,10 @@ import React, { useContext } from "react"
 import { InterviewDataContext } from "../../../../context/InterviewDataContext"
 import { Mic, Phone, Timer } from "lucide-react"
 import Image from "next/image"
+import Vapi from '@vapi-ai/web';
 function StartInterview() {
   const { interviewInfo, setInterviewInfo } = useContext(InterviewDataContext)
+  const vapi = new Vapi(process.env.NEXT_PUBLIC_VAPI_PUBLIC_KEY);
   return (
     <div className="p-20 lg:px48 xl:px-56">
       <h2 className="font-bold flex justify-between text-xl">Ai Interview session
