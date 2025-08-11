@@ -64,8 +64,6 @@ export async function POST(request) {
 function processTabData(tabData) {
   const {
     eventType,
-    previousTab,
-    currentTab,
     timeSpent,
     url,
     title

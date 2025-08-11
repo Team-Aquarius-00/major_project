@@ -9,17 +9,17 @@ class InterviewTrackingService {
       eyeMovement: {
         distractions: 0,
         totalSamples: 0,
-        focusTime: 0
+        focusTime: 0,
       },
       tabSwitches: {
         count: 0,
         totalTimeAway: 0,
-        lastSwitchTime: Date.now()
+        lastSwitchTime: Date.now(),
       },
       screenFocus: {
         percentage: 100,
-        startTime: Date.now()
-      }
+        startTime: Date.now(),
+      },
     }
     this.answers = []
     this.currentQuestion = null
@@ -28,24 +28,24 @@ class InterviewTrackingService {
   // Start tracking all metrics
   startTracking() {
     if (this.isTracking) return
-    
+
     this.isTracking = true
     this.startEyeTracking()
     this.startTabMonitoring()
     this.startFocusMonitoring()
-    
+
     console.log('Interview tracking started')
   }
 
   // Stop tracking and cleanup
   stopTracking() {
     if (!this.isTracking) return
-    
+
     this.isTracking = false
     this.stopEyeTracking()
     this.stopTabMonitoring()
     this.stopFocusMonitoring()
-    
+
     console.log('Interview tracking stopped')
   }
 
@@ -53,7 +53,7 @@ class InterviewTrackingService {
   startEyeTracking() {
     this.eyeTrackingInterval = setInterval(() => {
       if (!this.isTracking) return
-      
+
       // Simulate eye tracking data (replace with actual webcam tracking)
       const eyeData = this.simulateEyeTracking()
       this.trackEyeMovement(eyeData)
@@ -71,31 +71,31 @@ class InterviewTrackingService {
   simulateEyeTracking() {
     const screenWidth = window.innerWidth
     const screenHeight = window.innerHeight
-    
+
     // Simulate gaze position (center-focused with some variation)
     const centerX = screenWidth / 2
     const centerY = screenHeight / 2
-    
+
     // Add some realistic variation
     const variationX = (Math.random() - 0.5) * 200
     const variationY = (Math.random() - 0.5) * 200
-    
+
     const gazeX = centerX + variationX
     const gazeY = centerY + variationY
-    
+
     // Simulate confidence (higher when closer to center)
     const distanceFromCenter = Math.sqrt(
       Math.pow(gazeX - centerX, 2) + Math.pow(gazeY - centerY, 2)
     )
-    const confidence = Math.max(0.3, 1 - (distanceFromCenter / 500))
-    
+    const confidence = Math.max(0.3, 1 - distanceFromCenter / 500)
+
     return {
       gazeX,
       gazeY,
       screenWidth,
       screenHeight,
       confidence,
-      timestamp: Date.now()
+      timestamp: Date.now(),
     }
   }
 
@@ -111,8 +111,8 @@ class InterviewTrackingService {
           interviewId: this.interviewId,
           candidateId: this.candidateId,
           eyeData,
-          timestamp: new Date().toISOString()
-        })
+          timestamp: new Date().toISOString(),
+        }),
       })
 
       if (response.ok) {
@@ -142,10 +142,10 @@ class InterviewTrackingService {
 
     document.addEventListener('visibilitychange', handleVisibilityChange)
     window.addEventListener('beforeunload', handleBeforeUnload)
-    
+
     this.tabSwitchListeners = [
       { type: 'visibilitychange', handler: handleVisibilityChange },
-      { type: 'beforeunload', handler: handleBeforeUnload }
+      { type: 'beforeunload', handler: handleBeforeUnload },
     ]
   }
 
@@ -163,10 +163,10 @@ class InterviewTrackingService {
   // Handle tab switch events
   async handleTabSwitch(eventType) {
     if (!this.isTracking) return
-    
+
     const now = Date.now()
     const timeSpent = now - this.focusMetrics.tabSwitches.lastSwitchTime
-    
+
     const tabData = {
       eventType,
       previousTab: document.title,
@@ -174,7 +174,7 @@ class InterviewTrackingService {
       timeSpent,
       url: window.location.href,
       title: document.title,
-      timestamp: now
+      timestamp: now,
     }
 
     try {
@@ -187,8 +187,8 @@ class InterviewTrackingService {
           interviewId: this.interviewId,
           candidateId: this.candidateId,
           tabData,
-          timestamp: new Date().toISOString()
-        })
+          timestamp: new Date().toISOString(),
+        }),
       })
 
       if (response.ok) {
@@ -205,11 +205,11 @@ class InterviewTrackingService {
   // Focus monitoring
   startFocusMonitoring() {
     this.focusMetrics.screenFocus.startTime = Date.now()
-    
+
     // Update focus percentage based on time spent
     setInterval(() => {
       if (!this.isTracking) return
-      
+
       const totalTime = Date.now() - this.focusMetrics.screenFocus.startTime
       const focusTime = totalTime - this.focusMetrics.tabSwitches.totalTimeAway
       this.focusMetrics.screenFocus.percentage = (focusTime / totalTime) * 100
@@ -244,7 +244,7 @@ class InterviewTrackingService {
       timestamp: new Date().toISOString(),
       relevance_score: scores.relevance || 0.5,
       technical_score: scores.technical || 0.5,
-      clarity_score: scores.clarity || 0.5
+      clarity_score: scores.clarity || 0.5,
     }
 
     this.answers.push(answer)
@@ -268,8 +268,8 @@ class InterviewTrackingService {
           interviewId: this.interviewId,
           candidateId: this.candidateId,
           answers: this.answers,
-          focusMetrics: this.focusMetrics
-        })
+          focusMetrics: this.focusMetrics,
+        }),
       })
 
       if (response.ok) {
@@ -290,10 +290,12 @@ class InterviewTrackingService {
       ...this.focusMetrics,
       eyeMovement: {
         ...this.focusMetrics.eyeMovement,
-        distractionRate: this.focusMetrics.eyeMovement.totalSamples > 0 
-          ? this.focusMetrics.eyeMovement.distractions / this.focusMetrics.eyeMovement.totalSamples 
-          : 0
-      }
+        distractionRate:
+          this.focusMetrics.eyeMovement.totalSamples > 0
+            ? this.focusMetrics.eyeMovement.distractions /
+              this.focusMetrics.eyeMovement.totalSamples
+            : 0,
+      },
     }
   }
 
@@ -305,7 +307,7 @@ class InterviewTrackingService {
       isTracking: this.isTracking,
       focusMetrics: this.getFocusMetrics(),
       answersCount: this.answers.length,
-      currentQuestion: this.currentQuestion
+      currentQuestion: this.currentQuestion,
     }
   }
 }

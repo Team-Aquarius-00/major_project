@@ -21,12 +21,17 @@ import {
   Video,
   VideoOff,
   Camera,
+  Eye,
+  Monitor,
+  Target,
+  Activity,
 } from 'lucide-react'
 import Image from 'next/image'
 import Vapi from '@vapi-ai/web'
 import AlertConfirmation from './_components/AlertConfirmation'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
+import InterviewTrackingService from '@/services/interviewTrackingService'
 
 function StartInterview() {
   const { interviewInfo, setInterviewInfo } = useContext(InterviewDataContext)
@@ -48,14 +53,27 @@ function StartInterview() {
   const [videoStream, setVideoStream] = useState(null)
   const [videoError, setVideoError] = useState(null)
 
+  // Tracking states
+  const [trackingService, setTrackingService] = useState(null)
+  const [focusMetrics, setFocusMetrics] = useState({
+    eyeMovement: { distractions: 0, totalSamples: 0, distractionRate: 0 },
+    tabSwitches: { count: 0, totalTimeAway: 0, focusScore: 100 },
+    screenFocus: { percentage: 100 },
+  })
+  const [trackingStatus, setTrackingStatus] = useState('inactive')
+  const [currentAnswer, setCurrentAnswer] = useState('')
+  const [answerScores, setAnswerScores] = useState({})
+
   const durationRef = useRef(null)
   const progressRef = useRef(null)
   const videoRef = useRef(null)
+  const trackingIntervalRef = useRef(null)
 
   useEffect(() => {
     if (interviewInfo) {
       initializeInterview()
       initializeVideo()
+      initializeTracking()
     } else {
       setError('Interview information not found. Please go back and try again.')
     }
@@ -71,6 +89,41 @@ function StartInterview() {
       if (durationRef.current) clearInterval(durationRef.current)
     }
   }, [isCallActive])
+
+  // Initialize tracking service
+  const initializeTracking = () => {
+    if (!interviewInfo?.interview_id || !interviewInfo?.userName) return
+
+    const service = new InterviewTrackingService(
+      interviewInfo.interview_id,
+      interviewInfo.userName
+    )
+    setTrackingService(service)
+
+    // Start tracking when interview begins
+    if (isCallActive) {
+      service.startTracking()
+      setTrackingStatus('active')
+
+      // Update focus metrics every 5 seconds
+      trackingIntervalRef.current = setInterval(() => {
+        const metrics = service.getFocusMetrics()
+        setFocusMetrics(metrics)
+      }, 5000)
+    }
+  }
+
+  // Cleanup tracking on unmount
+  useEffect(() => {
+    return () => {
+      if (trackingService) {
+        trackingService.stopTracking()
+      }
+      if (trackingIntervalRef.current) {
+        clearInterval(trackingIntervalRef.current)
+      }
+    }
+  }, [trackingService])
 
   // Initialize video camera
   const initializeVideo = async () => {
@@ -148,12 +201,37 @@ function StartInterview() {
     vapiInstance.on('call-start', () => {
       console.log('Call has started')
       setIsCallActive(true)
+      setTrackingStatus('active')
+
+      // Start tracking when call begins
+      if (trackingService) {
+        trackingService.startTracking()
+
+        // Start focus metrics updates
+        trackingIntervalRef.current = setInterval(() => {
+          const metrics = trackingService.getFocusMetrics()
+          setFocusMetrics(metrics)
+        }, 5000)
+      }
+
       toast.success('Interview started successfully!')
     })
 
     vapiInstance.on('call-end', () => {
       console.log('Call has ended')
       setIsCallActive(false)
+      setTrackingStatus('completed')
+
+      // Stop tracking and calculate final score
+      if (trackingService) {
+        trackingService.stopTracking()
+        calculateFinalScore()
+      }
+
+      if (trackingIntervalRef.current) {
+        clearInterval(trackingIntervalRef.current)
+      }
+
       toast.info('Interview session ended')
     })
 
@@ -171,6 +249,11 @@ function StartInterview() {
       if (message.role === 'assistant') {
         setCurrentQuestion((prev) => Math.min(prev + 1, totalQuestions))
         setInterviewProgress((currentQuestion / totalQuestions) * 100)
+
+        // Record the question for tracking
+        if (trackingService) {
+          trackingService.setCurrentQuestion(message.content)
+        }
       }
     })
   }
@@ -241,6 +324,17 @@ Keep responses concise and natural. Focus on making the candidate comfortable wh
     if (vapi) {
       vapi.stop()
       setIsCallActive(false)
+      setTrackingStatus('completed')
+
+      // Stop tracking and calculate final score
+      if (trackingService) {
+        trackingService.stopTracking()
+        calculateFinalScore()
+      }
+
+      if (trackingIntervalRef.current) {
+        clearInterval(trackingIntervalRef.current)
+      }
     }
   }
 
@@ -274,6 +368,32 @@ Keep responses concise and natural. Focus on making the candidate comfortable wh
         setIsPaused(true)
         toast.info('Interview paused')
       }
+    }
+  }
+
+  // Calculate final score using tracking service
+  const calculateFinalScore = async () => {
+    if (!trackingService) return
+
+    try {
+      const scoreResult = await trackingService.calculateFinalScore()
+
+      toast.success(
+        `Interview completed! Final Score: ${Math.round(
+          scoreResult.finalScore * 100
+        )}%`
+      )
+
+      // Store scores for display
+      setAnswerScores({
+        focusScore: scoreResult.focusScore,
+        answerScore: scoreResult.answerScore,
+        finalScore: scoreResult.finalScore,
+        breakdown: scoreResult.breakdown,
+      })
+    } catch (error) {
+      console.error('Failed to calculate final score:', error)
+      toast.error('Failed to calculate interview score')
     }
   }
 
@@ -405,8 +525,6 @@ Keep responses concise and natural. Focus on making the candidate comfortable wh
             <div className='text-center'>
               {/* Video Display */}
               <div className='relative mb-6'>
-               
-
                 <div className='relative w-full max-w-sm mx-auto'>
                   {videoError ? (
                     <div className='w-full h-64 bg-gray-100 rounded-2xl flex items-center justify-center border-2 border-dashed border-gray-300'>
@@ -486,6 +604,76 @@ Keep responses concise and natural. Focus on making the candidate comfortable wh
           </div>
         </div>
 
+        {/* Focus Metrics Dashboard */}
+        {isCallActive && (
+          <div className='mt-8 bg-white rounded-2xl shadow-lg border border-gray-100 p-6'>
+            <h3 className='text-lg font-semibold text-gray-900 mb-4 text-center flex items-center justify-center gap-2'>
+              <Activity className='h-5 w-5 text-blue-600' />
+              Real-time Focus Metrics
+            </h3>
+            <div className='grid grid-cols-1 md:grid-cols-4 gap-4'>
+              <div className='text-center p-4 bg-blue-50 rounded-xl'>
+                <div className='flex items-center justify-center gap-2 mb-2'>
+                  <Eye className='h-5 w-5 text-blue-600' />
+                  <span className='text-sm font-medium text-blue-600'>
+                    Eye Focus
+                  </span>
+                </div>
+                <div className='text-2xl font-bold text-blue-600'>
+                  {Math.round(
+                    (1 - focusMetrics.eyeMovement.distractionRate) * 100
+                  )}
+                  %
+                </div>
+                <div className='text-xs text-blue-600'>
+                  {focusMetrics.eyeMovement.totalSamples} samples
+                </div>
+              </div>
+
+              <div className='text-center p-4 bg-green-50 rounded-xl'>
+                <div className='flex items-center justify-center gap-2 mb-2'>
+                  <Monitor className='h-5 w-5 text-green-600' />
+                  <span className='text-sm font-medium text-green-600'>
+                    Screen Focus
+                  </span>
+                </div>
+                <div className='text-2xl font-bold text-green-600'>
+                  {Math.round(focusMetrics.screenFocus.percentage)}%
+                </div>
+                <div className='text-xs text-green-600'>time focused</div>
+              </div>
+
+              <div className='text-center p-4 bg-purple-50 rounded-xl'>
+                <div className='flex items-center justify-center gap-2 mb-2'>
+                  <Target className='h-5 w-5 text-purple-600' />
+                  <span className='text-sm font-medium text-purple-600'>
+                    Tab Focus
+                  </span>
+                </div>
+                <div className='text-2xl font-bold text-purple-600'>
+                  {focusMetrics.tabSwitches.focusScore}
+                </div>
+                <div className='text-xs text-purple-600'>
+                  {focusMetrics.tabSwitches.count} switches
+                </div>
+              </div>
+
+              <div className='text-center p-4 bg-orange-50 rounded-xl'>
+                <div className='flex items-center justify-center gap-2 mb-2'>
+                  <Activity className='h-5 w-5 text-orange-600' />
+                  <span className='text-sm font-medium text-orange-600'>
+                    Status
+                  </span>
+                </div>
+                <div className='text-lg font-bold text-orange-600 capitalize'>
+                  {trackingStatus}
+                </div>
+                <div className='text-xs text-orange-600'>tracking active</div>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Interview Progress */}
         {isCallActive && (
           <div className='mt-8 bg-white rounded-2xl shadow-lg border border-gray-100 p-6'>
@@ -511,6 +699,39 @@ Keep responses concise and natural. Focus on making the candidate comfortable wh
                 </div>
                 <div className='text-sm text-purple-600'>Complete</div>
               </div>
+            </div>
+          </div>
+        )}
+
+        {/* Final Scores Display */}
+        {answerScores.finalScore && (
+          <div className='mt-8 bg-gradient-to-r from-green-50 to-blue-50 rounded-2xl shadow-lg border border-green-200 p-6'>
+            <h3 className='text-lg font-semibold text-green-900 mb-4 text-center flex items-center justify-center gap-2'>
+              <CheckCircle className='h-5 w-5 text-green-600' />
+              Interview Results
+            </h3>
+            <div className='grid grid-cols-1 md:grid-cols-3 gap-4'>
+              <div className='text-center p-4 bg-white rounded-xl border border-green-200'>
+                <div className='text-2xl font-bold text-green-600'>
+                  {Math.round(answerScores.finalScore * 100)}%
+                </div>
+                <div className='text-sm text-green-600'>Final Score</div>
+              </div>
+              <div className='text-center p-4 bg-white rounded-xl border border-blue-200'>
+                <div className='text-2xl font-bold text-blue-600'>
+                  {Math.round(answerScores.focusScore * 100)}%
+                </div>
+                <div className='text-sm text-blue-600'>Focus Score</div>
+              </div>
+              <div className='text-center p-4 bg-white rounded-xl border border-purple-200'>
+                <div className='text-2xl font-bold text-purple-600'>
+                  {Math.round(answerScores.answerScore * 100)}%
+                </div>
+                <div className='text-sm text-purple-600'>Answer Score</div>
+              </div>
+            </div>
+            <div className='mt-4 text-center text-sm text-gray-600'>
+              Focus Weight: 40% | Answer Weight: 60%
             </div>
           </div>
         )}
@@ -621,6 +842,7 @@ Keep responses concise and natural. Focus on making the candidate comfortable wh
                 <li>• Stay calm and confident throughout</li>
                 <li>• Ensure good lighting and camera positioning</li>
                 <li>• Look directly at the camera when speaking</li>
+                <li>• Stay focused on the interview - avoid tab switching</li>
               </ul>
             </div>
           </div>
