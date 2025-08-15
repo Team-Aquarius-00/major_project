@@ -25,6 +25,7 @@ import {
   Monitor,
   Target,
   Activity,
+  FileText,
 } from 'lucide-react'
 import Image from 'next/image'
 import Vapi from '@vapi-ai/web'
@@ -32,6 +33,7 @@ import AlertConfirmation from './_components/AlertConfirmation'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import InterviewTrackingService from '@/services/interviewTrackingService'
+import InterviewFeedback from './_components/InterviewFeedback'
 
 function StartInterview() {
   const { interviewInfo, setInterviewInfo } = useContext(InterviewDataContext)
@@ -63,6 +65,7 @@ function StartInterview() {
   const [trackingStatus, setTrackingStatus] = useState('inactive')
   const [currentAnswer, setCurrentAnswer] = useState('')
   const [answerScores, setAnswerScores] = useState({})
+  const [showFeedback, setShowFeedback] = useState(false)
 
   const durationRef = useRef(null)
   const progressRef = useRef(null)
@@ -78,6 +81,38 @@ function StartInterview() {
       setError('Interview information not found. Please go back and try again.')
     }
   }, [interviewInfo])
+
+  // Manage tracking when call status changes
+  useEffect(() => {
+    if (trackingService) {
+      if (isCallActive) {
+        // Ensure tracking is active when call starts
+        if (!trackingService.isTracking) {
+          trackingService.startTracking()
+          setTrackingStatus('active')
+          console.log('Tracking resumed due to call activation')
+        }
+      } else {
+        // Pause tracking when call is not active
+        if (trackingService.isTracking) {
+          trackingService.stopTracking()
+          setTrackingStatus('paused')
+          console.log('Tracking paused due to call deactivation')
+        }
+      }
+    }
+  }, [isCallActive, trackingService])
+
+  // Debug tracking service status
+  useEffect(() => {
+    if (trackingService) {
+      console.log('Tracking service status:', {
+        isTracking: trackingService.isTracking,
+        focusMetrics: trackingService.getFocusMetrics(),
+        trackingStatus,
+      })
+    }
+  }, [trackingService, trackingStatus])
 
   useEffect(() => {
     if (isCallActive) {
@@ -100,17 +135,25 @@ function StartInterview() {
     )
     setTrackingService(service)
 
-    // Start tracking when interview begins
-    if (isCallActive) {
-      service.startTracking()
-      setTrackingStatus('active')
-
-      // Update focus metrics every 5 seconds
-      trackingIntervalRef.current = setInterval(() => {
-        const metrics = service.getFocusMetrics()
-        setFocusMetrics(metrics)
-      }, 5000)
+    // Add global reference for debugging (development only)
+    if (process.env.NODE_ENV === 'development') {
+      window.trackingService = service
+      console.log(
+        'Tracking service available globally as window.trackingService'
+      )
     }
+
+    // Start tracking immediately - don't wait for isCallActive
+    service.startTracking()
+    setTrackingStatus('active')
+
+    // Update focus metrics every 2 seconds for more responsive updates
+    trackingIntervalRef.current = setInterval(() => {
+      const metrics = service.getFocusMetrics()
+      setFocusMetrics(metrics)
+    }, 2000)
+
+    console.log('Tracking service initialized and started')
   }
 
   // Cleanup tracking on unmount
@@ -604,72 +647,97 @@ Keep responses concise and natural. Focus on making the candidate comfortable wh
           </div>
         </div>
 
-        {/* Focus Metrics Dashboard */}
-        {isCallActive && (
-          <div className='mt-8 bg-white rounded-2xl shadow-lg border border-gray-100 p-6'>
-            <h3 className='text-lg font-semibold text-gray-900 mb-4 text-center flex items-center justify-center gap-2'>
-              <Activity className='h-5 w-5 text-blue-600' />
-              Real-time Focus Metrics
+        {/* Focus Metrics Display */}
+        {trackingStatus !== 'inactive' && (
+          <div className='grid grid-cols-1 md:grid-cols-3 gap-4 mb-6'>
+            <div className='text-center p-4 bg-blue-50 rounded-xl'>
+              <div className='flex items-center justify-center gap-2 mb-2'>
+                <Eye className='h-5 w-5 text-blue-600' />
+                <span className='text-sm font-medium text-blue-600'>
+                  Eye Focus
+                </span>
+              </div>
+              <div className='text-2xl font-bold text-blue-600'>
+                {Math.round(
+                  (1 - focusMetrics.eyeMovement.distractionRate) * 100
+                )}
+              </div>
+              <div className='text-xs text-blue-600'>
+                {focusMetrics.eyeMovement.totalSamples} samples
+              </div>
+            </div>
+
+            <div className='text-center p-4 bg-purple-50 rounded-xl'>
+              <div className='flex items-center justify-center gap-2 mb-2'>
+                <Target className='h-5 w-5 text-purple-600' />
+                <span className='text-sm font-medium text-purple-600'>
+                  Tab Focus
+                </span>
+              </div>
+              <div className='text-2xl font-bold text-purple-600'>
+                {focusMetrics.tabSwitches.focusScore || 100}
+              </div>
+              <div className='text-xs text-purple-600'>
+                {focusMetrics.tabSwitches.count} switches
+              </div>
+            </div>
+
+            <div className='text-center p-4 bg-orange-50 rounded-xl'>
+              <div className='flex items-center justify-center gap-2 mb-2'>
+                <Activity className='h-5 w-5 text-orange-600' />
+                <span className='text-sm font-medium text-orange-600'>
+                  Screen Focus
+                </span>
+              </div>
+              <div className='text-lg font-bold text-orange-600'>
+                {focusMetrics.screenFocus.percentage}%
+              </div>
+              <div className='text-xs text-orange-600'>
+                {trackingStatus} tracking
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Test Controls for Development */}
+        {process.env.NODE_ENV === 'development' && (
+          <div className='mb-6 p-4 bg-gray-50 rounded-xl'>
+            <h3 className='text-sm font-medium text-gray-700 mb-2'>
+              Test Controls (Dev Only)
             </h3>
-            <div className='grid grid-cols-1 md:grid-cols-4 gap-4'>
-              <div className='text-center p-4 bg-blue-50 rounded-xl'>
-                <div className='flex items-center justify-center gap-2 mb-2'>
-                  <Eye className='h-5 w-5 text-blue-600' />
-                  <span className='text-sm font-medium text-blue-600'>
-                    Eye Focus
-                  </span>
-                </div>
-                <div className='text-2xl font-bold text-blue-600'>
-                  {Math.round(
-                    (1 - focusMetrics.eyeMovement.distractionRate) * 100
-                  )}
-                  %
-                </div>
-                <div className='text-xs text-blue-600'>
-                  {focusMetrics.eyeMovement.totalSamples} samples
-                </div>
-              </div>
-
-              <div className='text-center p-4 bg-green-50 rounded-xl'>
-                <div className='flex items-center justify-center gap-2 mb-2'>
-                  <Monitor className='h-5 w-5 text-green-600' />
-                  <span className='text-sm font-medium text-green-600'>
-                    Screen Focus
-                  </span>
-                </div>
-                <div className='text-2xl font-bold text-green-600'>
-                  {Math.round(focusMetrics.screenFocus.percentage)}%
-                </div>
-                <div className='text-xs text-green-600'>time focused</div>
-              </div>
-
-              <div className='text-center p-4 bg-purple-50 rounded-xl'>
-                <div className='flex items-center justify-center gap-2 mb-2'>
-                  <Target className='h-5 w-5 text-purple-600' />
-                  <span className='text-sm font-medium text-purple-600'>
-                    Tab Focus
-                  </span>
-                </div>
-                <div className='text-2xl font-bold text-purple-600'>
-                  {focusMetrics.tabSwitches.focusScore}
-                </div>
-                <div className='text-xs text-purple-600'>
-                  {focusMetrics.tabSwitches.count} switches
-                </div>
-              </div>
-
-              <div className='text-center p-4 bg-orange-50 rounded-xl'>
-                <div className='flex items-center justify-center gap-2 mb-2'>
-                  <Activity className='h-5 w-5 text-orange-600' />
-                  <span className='text-sm font-medium text-orange-600'>
-                    Status
-                  </span>
-                </div>
-                <div className='text-lg font-bold text-orange-600 capitalize'>
-                  {trackingStatus}
-                </div>
-                <div className='text-xs text-orange-600'>tracking active</div>
-              </div>
+            <div className='flex gap-2'>
+              <button
+                onClick={() => {
+                  if (trackingService) {
+                    trackingService.handleTabSwitch('switch_away')
+                  }
+                }}
+                className='px-3 py-1 text-xs bg-red-100 text-red-700 rounded hover:bg-red-200'
+              >
+                Simulate Tab Away
+              </button>
+              <button
+                onClick={() => {
+                  if (trackingService) {
+                    trackingService.handleTabSwitch('switch_back')
+                  }
+                }}
+                className='px-3 py-1 text-xs bg-green-100 text-green-700 rounded hover:bg-green-200'
+              >
+                Simulate Tab Back
+              </button>
+              <button
+                onClick={() => {
+                  if (trackingService) {
+                    const metrics = trackingService.getFocusMetrics()
+                    setFocusMetrics(metrics)
+                    console.log('Current focus metrics:', metrics)
+                  }
+                }}
+                className='px-3 py-1 text-xs bg-blue-100 text-blue-700 rounded hover:bg-blue-200'
+              >
+                Refresh Metrics
+              </button>
             </div>
           </div>
         )}
@@ -732,6 +800,20 @@ Keep responses concise and natural. Focus on making the candidate comfortable wh
             </div>
             <div className='mt-4 text-center text-sm text-gray-600'>
               Focus Weight: 40% | Answer Weight: 60%
+            </div>
+
+            {/* View Detailed Feedback Button */}
+            <div className='mt-6 text-center'>
+              <Button
+                onClick={() => setShowFeedback(true)}
+                className='bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white px-8 py-3 shadow-lg shadow-blue-500/25 hover:shadow-xl hover:shadow-blue-500/30 transition-all duration-200 hover:-translate-y-0.5'
+              >
+                <FileText className='h-5 w-5 mr-2' />
+                View Detailed Feedback Report
+              </Button>
+              <p className='text-xs text-gray-500 mt-2'>
+                Comprehensive analysis for hiring managers
+              </p>
             </div>
           </div>
         )}
@@ -848,6 +930,18 @@ Keep responses concise and natural. Focus on making the candidate comfortable wh
           </div>
         </div>
       </div>
+
+      {/* Interview Feedback Modal */}
+      {showFeedback && (
+        <InterviewFeedback
+          interviewId={interviewInfo?.interview_id}
+          candidateId={interviewInfo?.userName}
+          focusMetrics={focusMetrics}
+          answerScores={answerScores}
+          finalScore={answerScores.finalScore}
+          onClose={() => setShowFeedback(false)}
+        />
+      )}
     </div>
   )
 }

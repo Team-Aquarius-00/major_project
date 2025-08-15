@@ -73,10 +73,10 @@ function processTabData(tabData) {
   let isDistraction = false
   let distractionLevel = 'none'
   
-  if (eventType === 'switch_away') {
+  if (eventType === 'switch_away' || eventType === 'window_blur') {
     isDistraction = true
     distractionLevel = 'high'
-  } else if (eventType === 'switch_back') {
+  } else if (eventType === 'switch_back' || eventType === 'window_focus') {
     isDistraction = false
     distractionLevel = 'none'
   } else if (eventType === 'new_tab') {
@@ -84,18 +84,17 @@ function processTabData(tabData) {
     distractionLevel = 'medium'
   }
 
-  // Calculate focus penalty
+  // Calculate focus penalty based on time spent away
   let focusPenalty = 0
-  if (isDistraction) {
-    switch (distractionLevel) {
-      case 'high':
-        focusPenalty = 0.3
-        break
-      case 'medium':
-        focusPenalty = 0.2
-        break
-      default:
-        focusPenalty = 0
+  if (isDistraction && timeSpent > 0) {
+    // Higher penalty for longer distractions
+    const secondsAway = timeSpent / 1000
+    if (secondsAway > 30) {
+      focusPenalty = 0.5 // High penalty for very long distractions
+    } else if (secondsAway > 10) {
+      focusPenalty = 0.3 // Medium penalty for moderate distractions
+    } else {
+      focusPenalty = 0.1 // Low penalty for short distractions
     }
   }
 

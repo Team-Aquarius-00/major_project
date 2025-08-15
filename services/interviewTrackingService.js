@@ -4,6 +4,7 @@ class InterviewTrackingService {
     this.candidateId = candidateId
     this.isTracking = false
     this.eyeTrackingInterval = null
+    this.focusMonitoringInterval = null
     this.tabSwitchListeners = []
     this.focusMetrics = {
       eyeMovement: {
@@ -15,6 +16,7 @@ class InterviewTrackingService {
         count: 0,
         totalTimeAway: 0,
         lastSwitchTime: Date.now(),
+        isCurrentlyAway: false,
       },
       screenFocus: {
         percentage: 100,
@@ -27,26 +29,41 @@ class InterviewTrackingService {
 
   // Start tracking all metrics
   startTracking() {
-    if (this.isTracking) return
+    if (this.isTracking) {
+      console.log('Tracking already active')
+      return
+    }
 
-    this.isTracking = true
-    this.startEyeTracking()
-    this.startTabMonitoring()
-    this.startFocusMonitoring()
+    try {
+      this.isTracking = true
+      this.startEyeTracking()
+      this.startTabMonitoring()
+      this.startFocusMonitoring()
 
-    console.log('Interview tracking started')
+      console.log('Interview tracking started successfully')
+    } catch (error) {
+      console.error('Failed to start tracking:', error)
+      this.isTracking = false
+    }
   }
 
   // Stop tracking and cleanup
   stopTracking() {
-    if (!this.isTracking) return
+    if (!this.isTracking) {
+      console.log('Tracking already stopped')
+      return
+    }
 
-    this.isTracking = false
-    this.stopEyeTracking()
-    this.stopTabMonitoring()
-    this.stopFocusMonitoring()
+    try {
+      this.isTracking = false
+      this.stopEyeTracking()
+      this.stopTabMonitoring()
+      this.stopFocusMonitoring()
 
-    console.log('Interview tracking stopped')
+      console.log('Interview tracking stopped successfully')
+    } catch (error) {
+      console.error('Failed to stop tracking:', error)
+    }
   }
 
   // Eye tracking simulation (in real implementation, this would use webcam + ML)
@@ -99,8 +116,28 @@ class InterviewTrackingService {
     }
   }
 
-  // Track eye movement data
+  // Track eye movement and send to API
   async trackEyeMovement(eyeData) {
+    if (!this.isTracking) return
+
+    // Determine if gaze is on screen
+    const isOnScreen =
+      eyeData.gazeX >= 0 &&
+      eyeData.gazeX <= eyeData.screenWidth &&
+      eyeData.gazeY >= 0 &&
+      eyeData.gazeY <= eyeData.screenHeight
+
+    const processedData = {
+      isOnScreen,
+      confidence: eyeData.confidence,
+      distanceFromCenter: Math.sqrt(
+        Math.pow(eyeData.gazeX - eyeData.screenWidth / 2, 2) +
+          Math.pow(eyeData.gazeY - eyeData.screenHeight / 2, 2)
+      ),
+    }
+
+    this.updateFocusMetrics(processedData)
+
     try {
       const response = await fetch('/api/eye-tracking', {
         method: 'POST',
@@ -111,6 +148,7 @@ class InterviewTrackingService {
           interviewId: this.interviewId,
           candidateId: this.candidateId,
           eyeData,
+          processedData,
           timestamp: new Date().toISOString(),
         }),
       })
@@ -126,38 +164,62 @@ class InterviewTrackingService {
 
   // Tab switch monitoring
   startTabMonitoring() {
-    // Track when user switches away from the interview tab
-    const handleVisibilityChange = () => {
-      if (document.hidden) {
-        this.handleTabSwitch('switch_away')
-      } else {
-        this.handleTabSwitch('switch_back')
+    try {
+      // Track when user switches away from the interview tab
+      const handleVisibilityChange = () => {
+        if (document.hidden) {
+          this.handleTabSwitch('switch_away')
+        } else {
+          this.handleTabSwitch('switch_back')
+        }
       }
+
+      // Track when user opens new tabs or navigates away
+      const handleBeforeUnload = () => {
+        this.handleTabSwitch('new_tab')
+      }
+
+      // Track when window loses focus
+      const handleBlur = () => {
+        this.handleTabSwitch('window_blur')
+      }
+
+      const handleFocus = () => {
+        this.handleTabSwitch('window_focus')
+      }
+
+      document.addEventListener('visibilitychange', handleVisibilityChange)
+      window.addEventListener('beforeunload', handleBeforeUnload)
+      window.addEventListener('blur', handleBlur)
+      window.addEventListener('focus', handleFocus)
+
+      this.tabSwitchListeners = [
+        { type: 'visibilitychange', handler: handleVisibilityChange },
+        { type: 'beforeunload', handler: handleBeforeUnload },
+        { type: 'blur', handler: handleBlur },
+        { type: 'focus', handler: handleFocus },
+      ]
+
+      console.log('Tab monitoring started successfully')
+    } catch (error) {
+      console.error('Failed to start tab monitoring:', error)
     }
-
-    // Track when user opens new tabs
-    const handleBeforeUnload = () => {
-      this.handleTabSwitch('new_tab')
-    }
-
-    document.addEventListener('visibilitychange', handleVisibilityChange)
-    window.addEventListener('beforeunload', handleBeforeUnload)
-
-    this.tabSwitchListeners = [
-      { type: 'visibilitychange', handler: handleVisibilityChange },
-      { type: 'beforeunload', handler: handleBeforeUnload },
-    ]
   }
 
   stopTabMonitoring() {
-    this.tabSwitchListeners.forEach(({ type, handler }) => {
-      if (type === 'beforeunload') {
-        window.removeEventListener(type, handler)
-      } else {
-        document.removeEventListener(type, handler)
-      }
-    })
-    this.tabSwitchListeners = []
+    try {
+      this.tabSwitchListeners.forEach(({ type, handler }) => {
+        if (type === 'beforeunload') {
+          window.removeEventListener(type, handler)
+        } else {
+          window.removeEventListener(type, handler)
+        }
+      })
+      this.tabSwitchListeners = []
+      console.log('Tab monitoring stopped successfully')
+    } catch (error) {
+      console.error('Failed to stop tab monitoring:', error)
+    }
   }
 
   // Handle tab switch events
@@ -167,10 +229,27 @@ class InterviewTrackingService {
     const now = Date.now()
     const timeSpent = now - this.focusMetrics.tabSwitches.lastSwitchTime
 
+    console.log(`Tab switch event: ${eventType}, time spent: ${timeSpent}ms`)
+
+    // Update local metrics immediately for real-time updates
+    if (eventType === 'switch_away' || eventType === 'window_blur') {
+      this.focusMetrics.tabSwitches.isCurrentlyAway = true
+      this.focusMetrics.tabSwitches.lastSwitchTime = now
+      console.log('User switched away from interview')
+    } else if (eventType === 'switch_back' || eventType === 'window_focus') {
+      if (this.focusMetrics.tabSwitches.isCurrentlyAway) {
+        this.focusMetrics.tabSwitches.count++
+        this.focusMetrics.tabSwitches.totalTimeAway += timeSpent
+        this.focusMetrics.tabSwitches.isCurrentlyAway = false
+        console.log(
+          `User returned to interview after ${timeSpent}ms, total switches: ${this.focusMetrics.tabSwitches.count}`
+        )
+      }
+      this.focusMetrics.tabSwitches.lastSwitchTime = now
+    }
+
     const tabData = {
       eventType,
-      previousTab: document.title,
-      currentTab: document.title,
       timeSpent,
       url: window.location.href,
       title: document.title,
@@ -194,30 +273,61 @@ class InterviewTrackingService {
       if (response.ok) {
         const result = await response.json()
         this.updateTabMetrics(result.processedData)
+        console.log('Tab switch data sent to API successfully')
       }
     } catch (error) {
       console.error('Failed to track tab switch:', error)
     }
-
-    this.focusMetrics.tabSwitches.lastSwitchTime = now
   }
 
   // Focus monitoring
   startFocusMonitoring() {
-    this.focusMetrics.screenFocus.startTime = Date.now()
+    try {
+      this.focusMetrics.screenFocus.startTime = Date.now()
 
-    // Update focus percentage based on time spent
-    setInterval(() => {
-      if (!this.isTracking) return
+      // Update focus percentage based on time spent
+      this.focusMonitoringInterval = setInterval(() => {
+        if (!this.isTracking) return
 
-      const totalTime = Date.now() - this.focusMetrics.screenFocus.startTime
-      const focusTime = totalTime - this.focusMetrics.tabSwitches.totalTimeAway
-      this.focusMetrics.screenFocus.percentage = (focusTime / totalTime) * 100
-    }, 5000) // Update every 5 seconds
+        try {
+          const totalTime = Date.now() - this.focusMetrics.screenFocus.startTime
+          const focusTime =
+            totalTime - this.focusMetrics.tabSwitches.totalTimeAway
+          this.focusMetrics.screenFocus.percentage = Math.max(
+            0,
+            (focusTime / totalTime) * 100
+          )
+
+          console.log(
+            `Focus update - Total time: ${Math.round(
+              totalTime / 1000
+            )}s, Time away: ${Math.round(
+              this.focusMetrics.tabSwitches.totalTimeAway / 1000
+            )}s, Focus: ${Math.round(
+              this.focusMetrics.screenFocus.percentage
+            )}%`
+          )
+        } catch (error) {
+          console.error('Error updating focus metrics:', error)
+        }
+      }, 5000) // Update every 5 seconds
+
+      console.log('Focus monitoring started successfully')
+    } catch (error) {
+      console.error('Failed to start focus monitoring:', error)
+    }
   }
 
   stopFocusMonitoring() {
-    // Cleanup focus monitoring
+    try {
+      if (this.focusMonitoringInterval) {
+        clearInterval(this.focusMonitoringInterval)
+        this.focusMonitoringInterval = null
+        console.log('Focus monitoring stopped successfully')
+      }
+    } catch (error) {
+      console.error('Failed to stop focus monitoring:', error)
+    }
   }
 
   // Update focus metrics based on tracking data
@@ -286,6 +396,17 @@ class InterviewTrackingService {
 
   // Get current focus metrics
   getFocusMetrics() {
+    // Calculate focus score based on tab switches and time away
+    const tabSwitchScore = Math.max(
+      0,
+      100 - this.focusMetrics.tabSwitches.count * 10
+    )
+    const timeAwayScore = Math.max(
+      0,
+      100 - (this.focusMetrics.tabSwitches.totalTimeAway / 1000) * 2
+    )
+    const overallFocusScore = Math.round((tabSwitchScore + timeAwayScore) / 2)
+
     return {
       ...this.focusMetrics,
       eyeMovement: {
@@ -295,6 +416,14 @@ class InterviewTrackingService {
             ? this.focusMetrics.eyeMovement.distractions /
               this.focusMetrics.eyeMovement.totalSamples
             : 0,
+      },
+      tabSwitches: {
+        ...this.focusMetrics.tabSwitches,
+        focusScore: overallFocusScore,
+      },
+      screenFocus: {
+        ...this.focusMetrics.screenFocus,
+        percentage: Math.round(this.focusMetrics.screenFocus.percentage),
       },
     }
   }
