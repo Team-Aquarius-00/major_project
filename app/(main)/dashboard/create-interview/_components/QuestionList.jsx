@@ -6,13 +6,13 @@ import { Button } from '@/components/ui/button'
 import QuestionlistContainer from './QuestionListContainer'
 import { supabase } from '@/services/supabaseClient'
 import { v4 as uuidv4 } from 'uuid'
-import { useUser } from '@/app/Provider'
+import { useUser as useClerkUser } from '@clerk/nextjs'
 
 function QuestionList({ formData, onCreateLink }) {
   const [loading, setLoading] = useState(true)
   const [questionList, setQuestionList] = useState()
   const [saveLoading, setSaveLoading] = useState(false)
-  const { user } = useUser()
+  const { user: clerkUser } = useClerkUser()
   console.log('Hello from question list')
   useEffect(() => {
     if (
@@ -35,7 +35,9 @@ function QuestionList({ formData, onCreateLink }) {
         {
           ...formData,
           questionList: questionList,
-          userEmail: user?.email,
+          userEmail:
+            clerkUser?.primaryEmailAddress?.emailAddress ||
+            clerkUser?.emailAddresses?.[0]?.emailAddress,
           interview_id: interview_id,
         },
       ])

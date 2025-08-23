@@ -1,66 +1,75 @@
-import { BriefcaseBusinessIcon, Calendar, Code2Icon, Gem, LayoutDashboard, List, Puzzle, Settings, User2Icon, WalletCards } from "lucide-react"
+import {
+  BriefcaseBusinessIcon,
+  Calendar,
+  Code2Icon,
+  Gem,
+  LayoutDashboard,
+  List,
+  Puzzle,
+  Settings,
+  User2Icon,
+  WalletCards,
+} from 'lucide-react'
 export const SideBarOptions = [
   {
     name: 'Dashboard',
     icon: LayoutDashboard,
-    path: '/dashboard'
-  }
-  ,
-
+    path: '/dashboard',
+    section: 'Main',
+  },
   {
     name: 'Schedule Interview',
     icon: Calendar,
-    path: '/schedule-interview'
-  }
-  ,
-
+    path: '/schedule-interview',
+    section: 'Interviews',
+    badge: 4,
+  },
   {
     name: 'All Interview',
     icon: List,
-    path: '/all-interview'
-  }
-  ,
+    path: '/all-interview',
+    section: 'Interviews',
+    badge: 2,
+  },
   {
     name: 'Billings',
     icon: WalletCards,
-    path: '/billings'
-  }
-  ,
+    path: '/billings',
+    section: 'Account',
+  },
   {
     name: 'Settings',
     icon: Settings,
-    path: '/settings'
-  }
-  ,
+    path: '/settings',
+    section: 'Account',
+  },
 ]
 
 export const InterviewType = [
   {
     title: 'Technical',
-    icon: Code2Icon
+    icon: Code2Icon,
   },
 
   {
     title: 'Behavioral',
-    icon: User2Icon
+    icon: User2Icon,
   },
 
   {
     title: 'Experience',
-    icon: BriefcaseBusinessIcon
+    icon: BriefcaseBusinessIcon,
   },
 
   {
     title: 'Problem Solving',
-    icon: Puzzle
+    icon: Puzzle,
   },
 
   {
     title: 'Leadership',
-    icon: Gem
+    icon: Gem,
   },
-
-
 ]
 
 export const QUESTIONS_PROMPT = `You are an expert technical interviewer.
