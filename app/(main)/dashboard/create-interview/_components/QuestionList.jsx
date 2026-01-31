@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useState, useCallback } from 'react'
 import axios from 'axios'
 import { toast } from 'sonner'
 import { Loader2, Loader2Icon } from 'lucide-react'
@@ -14,39 +14,8 @@ function QuestionList({ formData, onCreateLink }) {
   const [saveLoading, setSaveLoading] = useState(false)
   const { user: clerkUser } = useClerkUser()
   console.log('Hello from question list')
-  useEffect(() => {
-    if (
-      formData &&
-      formData.jobPosition &&
-      formData.jobDescription &&
-      formData.duration &&
-      formData.type
-    ) {
-      GenerateQuestionList()
-    }
-  }, [formData])
 
-  const onFinish = async () => {
-    setSaveLoading(true)
-    const interview_id = uuidv4()
-    const { data, error } = await supabase
-      .from('Interview')
-      .insert([
-        {
-          ...formData,
-          questionList: questionList,
-          userEmail:
-            clerkUser?.primaryEmailAddress?.emailAddress ||
-            clerkUser?.emailAddresses?.[0]?.emailAddress,
-          interview_id: interview_id,
-        },
-      ])
-      .select()
-    setSaveLoading(false)
-    console.log(data)
-    onCreateLink(interview_id)
-  }
-  const GenerateQuestionList = async () => {
+  const GenerateQuestionList = useCallback(async () => {
     setLoading(true)
     try {
       const result = await axios.post('/api/ai-model', { ...formData })
@@ -67,6 +36,77 @@ function QuestionList({ formData, onCreateLink }) {
       console.log(error)
       toast('server error , try again')
       setLoading(false)
+    }
+  }, [formData])
+
+  useEffect(() => {
+    if (
+      formData &&
+      formData.jobPosition &&
+      formData.jobDescription &&
+      formData.duration &&
+      formData.type
+    ) {
+      GenerateQuestionList()
+    }
+  }, [formData, GenerateQuestionList])
+
+  const onFinish = async () => {
+    setSaveLoading(true)
+    const interview_id = uuidv4()
+    try {
+      // Map camelCase formData to snake_case DB columns to match Postgres schema
+      const insertObj = {
+        interview_id: interview_id,
+        job_position: formData.jobPosition,
+        job_description: formData.jobDescription,
+        duration: formData.duration,
+        type: formData.type,
+        questionList: questionList,
+        userEmail:
+          clerkUser?.primaryEmailAddress?.emailAddress ||
+          clerkUser?.emailAddresses?.[0]?.emailAddress,
+      }
+
+      const { data, error } = await supabase
+        .from('Interview')
+        .insert([insertObj])
+        .select()
+
+      setSaveLoading(false)
+
+      if (error) {
+        console.error('Supabase insert error:', error)
+        // Helpful hint if table missing or permission denied
+        const msg = String(error.message || error)
+        if (
+          msg.toLowerCase().includes('relation') ||
+          msg.toLowerCase().includes('does not exist') ||
+          msg.toLowerCase().includes('no such table')
+        ) {
+          toast('Database table missing. Create `Interviews` table in your DB.')
+        } else if (
+          msg.toLowerCase().includes('permission') ||
+          msg.toLowerCase().includes('policy')
+        ) {
+          toast('Permission denied. Check Supabase RLS/policies and API keys.')
+        } else {
+          toast('Failed to save interview: ' + msg)
+        }
+        return
+      }
+
+      if (!data || data.length === 0) {
+        toast('No data returned after saving. Check DB.')
+        return
+      }
+
+      console.log('Saved interview:', data)
+      onCreateLink(interview_id)
+    } catch (e) {
+      setSaveLoading(false)
+      console.error('Unexpected error saving interview:', e)
+      toast('Unexpected error saving interview. See console for details.')
     }
   }
 

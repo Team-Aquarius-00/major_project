@@ -44,7 +44,7 @@ function Interview() {
     try {
       let { data: Interview, error } = await supabase
         .from('Interview')
-        .select('jobPosition, jobDescription, type, duration')
+        .select('job_position, job_description, type, duration')
         .eq('interview_id', interview_id)
 
       if (error) {

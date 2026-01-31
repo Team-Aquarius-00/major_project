@@ -14,6 +14,7 @@ import { Toaster } from '@/components/ui/sonner'
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
 import { Zap } from 'lucide-react'
+// import Dashboard from '@/app/(main)/dashboard/page'
 
 // Fonts
 const geistSans = Geist({
@@ -117,7 +118,10 @@ export default function RootLayout({
             </div>
           </header>
 
-          <main className='pt-20 min-h-screen'>{children}</main>
+          <main className='pt-20 min-h-screen'>
+            {/* <Dashboard /> */}
+            {children}
+          </main>
 
           <Toaster />
         </body>

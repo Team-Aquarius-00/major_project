@@ -73,7 +73,7 @@ function CreateInterview() {
         <InterviewLink
           formData={formData}
           interview_id={interviewId}
-          // FinishCreatingLink={() => onFinishCreatingLink()}
+          FinishCreatingLink={() => onFinishCreatingLink()}
           onCreateNewInterview={resetInterview}
         />
       ) : null}

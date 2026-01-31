@@ -1,5 +1,6 @@
 'use client'
 import React, { useContext, useEffect, useState, useRef } from 'react'
+import { useParams, useRouter } from 'next/navigation'
 import { InterviewDataContext } from '../../../../context/InterviewDataContext'
 import {
   Mic,
@@ -37,6 +38,8 @@ import InterviewFeedback from './_components/InterviewFeedback'
 
 function StartInterview() {
   const { interviewInfo, setInterviewInfo } = useContext(InterviewDataContext)
+  const { interview_id } = useParams()
+  const router = useRouter()
   const [vapi, setVapi] = useState(null)
   const [isCallActive, setIsCallActive] = useState(false)
   const [isMuted, setIsMuted] = useState(false)
@@ -47,7 +50,7 @@ function StartInterview() {
   const [currentQuestion, setCurrentQuestion] = useState(0)
   const [totalQuestions, setTotalQuestions] = useState(0)
   const [interviewProgress, setInterviewProgress] = useState(0)
-  const [isLoading, setIsLoading] = useState(true)
+  const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState(null)
 
   // Video states
@@ -78,7 +81,15 @@ function StartInterview() {
       initializeVideo()
       initializeTracking()
     } else {
-      setError('Interview information not found. Please go back and try again.')
+      // If user opened the start URL directly (no context), redirect them
+      // back to the interview join page so they can enter their name.
+      if (interview_id) {
+        router.replace('/interview/' + interview_id)
+      } else {
+        setError(
+          'Interview information not found. Please go back and try again.',
+        )
+      }
     }
   }, [interviewInfo])
 
@@ -131,7 +142,7 @@ function StartInterview() {
 
     const service = new InterviewTrackingService(
       interviewInfo.interview_id,
-      interviewInfo.userName
+      interviewInfo.userName,
     )
     setTrackingService(service)
 
@@ -139,7 +150,7 @@ function StartInterview() {
     if (process.env.NODE_ENV === 'development') {
       window.trackingService = service
       console.log(
-        'Tracking service available globally as window.trackingService'
+        'Tracking service available globally as window.trackingService',
       )
     }
 
@@ -190,7 +201,7 @@ function StartInterview() {
       console.error('Failed to access camera:', err)
       setVideoError('Camera access denied. Please allow camera permissions.')
       toast.error(
-        'Camera access denied. Please check your browser permissions.'
+        'Camera access denied. Please check your browser permissions.',
       )
     }
   }
@@ -233,10 +244,10 @@ function StartInterview() {
       const questions = interviewInfo?.interviewData?.questionList || []
       setTotalQuestions(questions.length)
 
-      setIsLoading(false)
+      // setIsLoading(false)
     } catch (err) {
       setError('Failed to initialize interview. Please refresh the page.')
-      setIsLoading(false)
+      // setIsLoading(false)
     }
   }
 
@@ -423,8 +434,8 @@ Keep responses concise and natural. Focus on making the candidate comfortable wh
 
       toast.success(
         `Interview completed! Final Score: ${Math.round(
-          scoreResult.finalScore * 100
-        )}%`
+          scoreResult.finalScore * 100,
+        )}%`,
       )
 
       // Store scores for display
@@ -501,7 +512,7 @@ Keep responses concise and natural. Focus on making the candidate comfortable wh
                 AI Interview Session
               </h1>
               <p className='text-sm text-gray-600'>
-                {interviewInfo?.interviewData?.jobPosition}
+                {interviewInfo?.interviewData?.job_position}
               </p>
             </div>
           </div>
@@ -659,7 +670,7 @@ Keep responses concise and natural. Focus on making the candidate comfortable wh
               </div>
               <div className='text-2xl font-bold text-blue-600'>
                 {Math.round(
-                  (1 - focusMetrics.eyeMovement.distractionRate) * 100
+                  (1 - focusMetrics.eyeMovement.distractionRate) * 100,
                 )}
               </div>
               <div className='text-xs text-blue-600'>
