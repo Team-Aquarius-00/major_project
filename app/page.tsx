@@ -1,7 +1,25 @@
+'use client'
 // import { Divide } from 'lucide-react'
 import { Users, UserCheck } from 'lucide-react'
+import { useUser } from '@clerk/nextjs'
+import { useRouter } from 'next/navigation'
+import { useEffect } from 'react'
 
 const page = () => {
+  const { isSignedIn, isLoaded } = useUser()
+  const router = useRouter()
+
+  useEffect(() => {
+    if (isLoaded && isSignedIn) {
+      router.push('/dashboard')
+    }
+  }, [isLoaded, isSignedIn, router])
+
+  // Show nothing while checking authentication
+  if (!isLoaded) {
+    return null
+  }
+
   return (
     <div className='min-h-screen bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50'>
       {/* Hero Section */}

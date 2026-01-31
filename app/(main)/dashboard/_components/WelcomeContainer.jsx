@@ -18,15 +18,26 @@ function WelcomeContainer() {
   const greeting =
     hour < 12 ? 'Good morning' : hour < 18 ? 'Good afternoon' : 'Good evening'
   return (
-    <div className='m-5 bg-white p-5 rounded-xl flex items-center justify-between'>
-      <div>
-        <h2 className='text-lg font-bold'>
+    <div className='m-5 bg-white p-6 rounded-lg flex items-center justify-between shadow-sm'>
+      <div className='flex-1'>
+        <h2 className='text-2xl font-bold text-gray-900 mb-1'>
           {greeting}, {displayName}
         </h2>
-        <h2 className='text-gray-500'>Ai based hiring </h2>
+        <p className='text-gray-600 font-medium'>AI-powered hiring platform</p>
       </div>
-
-     
+      {/* {avatarUrl && (
+        <div className='ml-6 flex-shrink-0'>
+          <div className='relative w-16 h-16 rounded-full overflow-hidden ring-2 ring-gray-200'>
+            <Image
+              src={avatarUrl}
+              alt={displayName}
+              fill
+              className='object-cover'
+              priority
+            />
+          </div>
+        </div>
+      )} */}
     </div>
   )
 }

@@ -98,7 +98,7 @@ export default function ScheduleInterview() {
                   onChange={(e) =>
                     handleInputChange('candidatePhone', e.target.value)
                   }
-                  placeholder='+1 (555) 123-4567'
+                  placeholder='+9779867452321'
                   className='h-11'
                 />
               </div>

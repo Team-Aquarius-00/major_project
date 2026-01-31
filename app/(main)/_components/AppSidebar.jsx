@@ -14,7 +14,7 @@ import {
 } from '@/components/ui/sidebar'
 import Image from 'next/image'
 import { Button } from '@/components/ui/button'
-import { Plus, Sparkles } from 'lucide-react'
+import { Plus, Sparkles, ChevronRight } from 'lucide-react'
 import { SideBarOptions } from '../../../services/Constants'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
@@ -22,35 +22,33 @@ import { usePathname } from 'next/navigation'
 export function AppSidebar() {
   const path = usePathname()
   return (
-    <Sidebar className='border-r border-gray-200/60 bg-gradient-to-b from-white to-gray-50/50'>
-      <SidebarHeader className='flex items-center justify-center py-6 px-4'>
+    <Sidebar className='border-r border-gray-200 bg-white'>
+      <SidebarHeader className='flex items-center justify-center py-8 px-4 border-b border-gray-100'>
         <Link
           href='/'
-          className='flex items-center gap-3 px-3 py-2 rounded-xl hover:bg-gray-100/80 transition-colors group'
+          className='flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-gray-50 transition-all duration-200 group'
           aria-label='Home'
         >
           <div className='relative'>
             <Image
               src={'/logo.png'}
               alt='logo'
-              width={32}
-              height={32}
-              className='rounded-lg shadow-sm group-hover:shadow-md transition-shadow'
+              width={36}
+              height={36}
+              className='rounded-md shadow-sm group-hover:shadow-md transition-shadow'
             />
-            <div className='absolute -top-1 -right-1 w-3 h-3 bg-gradient-to-r from-blue-500 to-purple-600 rounded-full animate-pulse'></div>
+            <div className='absolute -bottom-1 -right-1 w-2.5 h-2.5 bg-emerald-500 rounded-full'></div>
           </div>
-          <div className='flex flex-col'>
-            <span className='font-bold text-lg tracking-tight text-gray-900 group-hover:text-gray-700 transition-colors'>
+          <div className='flex flex-col gap-0.5'>
+            <span className='font-semibold text-sm tracking-tight text-gray-900'>
               AI Recruitment
             </span>
-            <span className='text-xs text-gray-500 font-medium'>
-              Powered by AI
-            </span>
+            <span className='text-xs text-gray-500'>Hiring Platform</span>
           </div>
         </Link>
       </SidebarHeader>
 
-      <SidebarContent className='px-3'>
+      <SidebarContent className='px-2 py-4'>
         <SidebarGroup>
           <SidebarGroupContent>
             <SidebarMenu>
@@ -60,10 +58,10 @@ export function AppSidebar() {
                   acc[section] = acc[section] || []
                   acc[section].push(item)
                   return acc
-                }, {})
+                }, {}),
               ).map(([section, items]) => (
-                <div key={section} className='mb-6'>
-                  <SidebarGroupLabel className='text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3 px-2'>
+                <div key={section} className='mb-7'>
+                  <SidebarGroupLabel className='text-xs font-semibold text-gray-400 uppercase tracking-widest mb-2.5 px-3'>
                     {section}
                   </SidebarGroupLabel>
                   <div className='space-y-1'>
@@ -73,35 +71,42 @@ export function AppSidebar() {
                           asChild
                           size='lg'
                           isActive={path === option.path}
-                          className='group relative overflow-hidden rounded-xl transition-all duration-200 hover:bg-gradient-to-r hover:from-blue-50 hover:to-indigo-50 hover:shadow-sm'
+                          className='group relative rounded-lg transition-all duration-150'
                         >
                           <Link
                             href={option.path}
-                            className='flex items-center w-full'
+                            className={`flex items-center w-full px-3 py-2.5 rounded-lg transition-all duration-150 ${
+                              path === option.path
+                                ? 'bg-gray-100 text-gray-900'
+                                : 'text-gray-600 hover:bg-gray-50'
+                            }`}
                           >
                             <div
-                              className={`p-2 rounded-lg transition-all duration-200 ${
+                              className={`p-1.5 rounded-md transition-all duration-150 ${
                                 path === option.path
-                                  ? 'bg-gradient-to-r from-blue-500 to-blue-600 text-white shadow-lg shadow-blue-500/25'
-                                  : 'bg-gray-100 text-gray-600 group-hover:bg-blue-100 group-hover:text-blue-600'
+                                  ? 'bg-blue-500 text-white'
+                                  : 'bg-gray-200 text-gray-600 group-hover:bg-gray-300'
                               }`}
                             >
-                              <option.icon className='h-5 w-5' />
+                              <option.icon className='h-4 w-4' />
                             </div>
                             <span
-                              className={`ml-3 font-medium transition-colors ${
+                              className={`ml-2.5 text-sm font-medium transition-colors ${
                                 path === option.path
-                                  ? 'text-blue-700 font-semibold'
+                                  ? 'text-gray-900 font-semibold'
                                   : 'text-gray-700 group-hover:text-gray-900'
                               }`}
                             >
                               {option.name}
                             </span>
                             {option.badge ? (
-                              <SidebarMenuBadge className='ml-auto bg-gradient-to-r from-blue-500 to-purple-600 text-white font-semibold shadow-sm'>
+                              <SidebarMenuBadge className='ml-auto bg-blue-500 text-white text-xs font-semibold px-2 py-0.5 rounded-full'>
                                 {option.badge}
                               </SidebarMenuBadge>
                             ) : null}
+                            {path === option.path && (
+                              <ChevronRight className='ml-auto h-4 w-4 text-blue-500' />
+                            )}
                           </Link>
                         </SidebarMenuButton>
                       </SidebarMenuItem>
@@ -114,29 +119,20 @@ export function AppSidebar() {
         </SidebarGroup>
       </SidebarContent>
 
-      <SidebarFooter className='p-4'>
+      <SidebarFooter className='p-4 border-t border-gray-100'>
         <div className='space-y-3'>
           <Button
             asChild
-            className='w-full bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white shadow-lg shadow-blue-500/25 hover:shadow-xl hover:shadow-blue-500/30 transition-all duration-200 hover:-translate-y-0.5'
+            className='w-full bg-blue-600 hover:bg-blue-700 text-white shadow-sm hover:shadow-md transition-all duration-150 font-medium h-9'
           >
             <Link
               href='/dashboard/create-interview'
               className='flex items-center justify-center'
             >
-              <Plus className='mr-2 h-5 w-5' />
-              <span className='font-semibold'>New Interview</span>
+              <Plus className='mr-2 h-4 w-4' />
+              New Interview
             </Link>
           </Button>
-
-          <div className='text-center'>
-            <div className='inline-flex items-center gap-2 px-3 py-2 bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-200/50 rounded-lg'>
-              <Sparkles className='h-4 w-4 text-amber-600' />
-              <span className='text-xs font-medium text-amber-700'>
-                AI Powered
-              </span>
-            </div>
-          </div>
         </div>
       </SidebarFooter>
     </Sidebar>

@@ -58,28 +58,28 @@ function StartInterview() {
   const [videoStream, setVideoStream] = useState(null)
   const [videoError, setVideoError] = useState(null)
 
-  // Tracking states
-  const [trackingService, setTrackingService] = useState(null)
-  const [focusMetrics, setFocusMetrics] = useState({
-    eyeMovement: { distractions: 0, totalSamples: 0, distractionRate: 0 },
-    tabSwitches: { count: 0, totalTimeAway: 0, focusScore: 100 },
-    screenFocus: { percentage: 100 },
-  })
-  const [trackingStatus, setTrackingStatus] = useState('inactive')
+  // Tracking states - DISABLED
+  // const [trackingService, setTrackingService] = useState(null)
+  // const [focusMetrics, setFocusMetrics] = useState({
+  //   eyeMovement: { distractions: 0, totalSamples: 0, distractionRate: 0 },
+  //   tabSwitches: { count: 0, totalTimeAway: 0, focusScore: 100 },
+  //   screenFocus: { percentage: 100 },
+  // })
+  // const [trackingStatus, setTrackingStatus] = useState('inactive')
   const [currentAnswer, setCurrentAnswer] = useState('')
-  const [answerScores, setAnswerScores] = useState({})
+  // const [answerScores, setAnswerScores] = useState({})
   const [showFeedback, setShowFeedback] = useState(false)
 
   const durationRef = useRef(null)
   const progressRef = useRef(null)
   const videoRef = useRef(null)
-  const trackingIntervalRef = useRef(null)
+  // const trackingIntervalRef = useRef(null) - DISABLED
 
   useEffect(() => {
     if (interviewInfo) {
       initializeInterview()
       initializeVideo()
-      initializeTracking()
+      // initializeTracking() - DISABLED
     } else {
       // If user opened the start URL directly (no context), redirect them
       // back to the interview join page so they can enter their name.
@@ -93,37 +93,37 @@ function StartInterview() {
     }
   }, [interviewInfo])
 
-  // Manage tracking when call status changes
-  useEffect(() => {
-    if (trackingService) {
-      if (isCallActive) {
-        // Ensure tracking is active when call starts
-        if (!trackingService.isTracking) {
-          trackingService.startTracking()
-          setTrackingStatus('active')
-          console.log('Tracking resumed due to call activation')
-        }
-      } else {
-        // Pause tracking when call is not active
-        if (trackingService.isTracking) {
-          trackingService.stopTracking()
-          setTrackingStatus('paused')
-          console.log('Tracking paused due to call deactivation')
-        }
-      }
-    }
-  }, [isCallActive, trackingService])
+  // Manage tracking when call status changes - DISABLED
+  // useEffect(() => {
+  //   if (trackingService) {
+  //     if (isCallActive) {
+  //       // Ensure tracking is active when call starts
+  //       if (!trackingService.isTracking) {
+  //         trackingService.startTracking()
+  //         setTrackingStatus('active')
+  //         console.log('Tracking resumed due to call activation')
+  //       }
+  //     } else {
+  //       // Pause tracking when call is not active
+  //       if (trackingService.isTracking) {
+  //         trackingService.stopTracking()
+  //         setTrackingStatus('paused')
+  //         console.log('Tracking paused due to call deactivation')
+  //       }
+  //     }
+  //   }
+  // }, [isCallActive, trackingService])
 
-  // Debug tracking service status
-  useEffect(() => {
-    if (trackingService) {
-      console.log('Tracking service status:', {
-        isTracking: trackingService.isTracking,
-        focusMetrics: trackingService.getFocusMetrics(),
-        trackingStatus,
-      })
-    }
-  }, [trackingService, trackingStatus])
+  // Debug tracking service status - DISABLED
+  // useEffect(() => {
+  //   if (trackingService) {
+  //     console.log('Tracking service status:', {
+  //       isTracking: trackingService.isTracking,
+  //       focusMetrics: trackingService.getFocusMetrics(),
+  //       trackingStatus,
+  //     })
+  //   }
+  // }, [trackingService, trackingStatus])
 
   useEffect(() => {
     if (isCallActive) {
@@ -136,48 +136,48 @@ function StartInterview() {
     }
   }, [isCallActive])
 
-  // Initialize tracking service
-  const initializeTracking = () => {
-    if (!interviewInfo?.interview_id || !interviewInfo?.userName) return
+  // Initialize tracking service - DISABLED
+  // const initializeTracking = () => {
+  //   if (!interviewInfo?.interview_id || !interviewInfo?.userName) return
 
-    const service = new InterviewTrackingService(
-      interviewInfo.interview_id,
-      interviewInfo.userName,
-    )
-    setTrackingService(service)
+  //   const service = new InterviewTrackingService(
+  //     interviewInfo.interview_id,
+  //     interviewInfo.userName,
+  //   )
+  //   setTrackingService(service)
 
-    // Add global reference for debugging (development only)
-    if (process.env.NODE_ENV === 'development') {
-      window.trackingService = service
-      console.log(
-        'Tracking service available globally as window.trackingService',
-      )
-    }
+  //   // Add global reference for debugging (development only)
+  //   if (process.env.NODE_ENV === 'development') {
+  //     window.trackingService = service
+  //     console.log(
+  //       'Tracking service available globally as window.trackingService',
+  //     )
+  //   }
 
-    // Start tracking immediately - don't wait for isCallActive
-    service.startTracking()
-    setTrackingStatus('active')
+  //   // Start tracking immediately - don't wait for isCallActive
+  //   service.startTracking()
+  //   setTrackingStatus('active')
 
-    // Update focus metrics every 2 seconds for more responsive updates
-    trackingIntervalRef.current = setInterval(() => {
-      const metrics = service.getFocusMetrics()
-      setFocusMetrics(metrics)
-    }, 2000)
+  //   // Update focus metrics every 2 seconds for more responsive updates
+  //   trackingIntervalRef.current = setInterval(() => {
+  //     const metrics = service.getFocusMetrics()
+  //     setFocusMetrics(metrics)
+  //   }, 2000)
 
-    console.log('Tracking service initialized and started')
-  }
+  //   console.log('Tracking service initialized and started')
+  // }
 
-  // Cleanup tracking on unmount
-  useEffect(() => {
-    return () => {
-      if (trackingService) {
-        trackingService.stopTracking()
-      }
-      if (trackingIntervalRef.current) {
-        clearInterval(trackingIntervalRef.current)
-      }
-    }
-  }, [trackingService])
+  // Cleanup tracking on unmount - DISABLED
+  // useEffect(() => {
+  //   return () => {
+  //     if (trackingService) {
+  //       trackingService.stopTracking()
+  //     }
+  //     if (trackingIntervalRef.current) {
+  //       clearInterval(trackingIntervalRef.current)
+  //     }
+  //   }
+  // }, [trackingService])
 
   // Initialize video camera
   const initializeVideo = async () => {
@@ -234,7 +234,25 @@ function StartInterview() {
 
   const initializeInterview = () => {
     try {
-      const vapiInstance = new Vapi(process.env.NEXT_PUBLIC_VAPI_PUBLIC_KEY)
+      const apiKey = process.env.NEXT_PUBLIC_VAPI_PUBLIC_KEY
+
+      // Debug logging
+      console.log('Vapi initialization:', {
+        apiKeyExists: !!apiKey,
+        apiKeyLength: apiKey?.length || 0,
+      })
+
+      if (!apiKey) {
+        setError(
+          'Vapi API key is missing. Please check your environment variables.',
+        )
+        return
+      }
+
+      const vapiInstance = new Vapi(apiKey)
+
+      // Test connection
+      console.log('Vapi instance created:', vapiInstance)
       setVapi(vapiInstance)
 
       // Set up event listeners
@@ -244,10 +262,16 @@ function StartInterview() {
       const questions = interviewInfo?.interviewData?.questionList || []
       setTotalQuestions(questions.length)
 
-      // setIsLoading(false)
+      console.log('Interview initialized successfully')
     } catch (err) {
-      setError('Failed to initialize interview. Please refresh the page.')
-      // setIsLoading(false)
+      console.error('Vapi initialization error:', {
+        message: err.message,
+        stack: err.stack,
+        error: err,
+      })
+      setError(
+        `Failed to initialize Vapi: ${err.message || 'Unknown error'}. Please refresh the page.`,
+      )
     }
   }
 
@@ -255,18 +279,18 @@ function StartInterview() {
     vapiInstance.on('call-start', () => {
       console.log('Call has started')
       setIsCallActive(true)
-      setTrackingStatus('active')
+      // setTrackingStatus('active') - DISABLED
 
-      // Start tracking when call begins
-      if (trackingService) {
-        trackingService.startTracking()
+      // Start tracking when call begins - DISABLED
+      // if (trackingService) {
+      //   trackingService.startTracking()
 
-        // Start focus metrics updates
-        trackingIntervalRef.current = setInterval(() => {
-          const metrics = trackingService.getFocusMetrics()
-          setFocusMetrics(metrics)
-        }, 5000)
-      }
+      //   // Start focus metrics updates
+      //   trackingIntervalRef.current = setInterval(() => {
+      //     const metrics = trackingService.getFocusMetrics()
+      //     setFocusMetrics(metrics)
+      //   }, 5000)
+      // }
 
       toast.success('Interview started successfully!')
     })
@@ -274,17 +298,17 @@ function StartInterview() {
     vapiInstance.on('call-end', () => {
       console.log('Call has ended')
       setIsCallActive(false)
-      setTrackingStatus('completed')
+      // setTrackingStatus('completed') - DISABLED
 
-      // Stop tracking and calculate final score
-      if (trackingService) {
-        trackingService.stopTracking()
-        calculateFinalScore()
-      }
+      // Stop tracking and calculate final score - DISABLED
+      // if (trackingService) {
+      //   trackingService.stopTracking()
+      //   calculateFinalScore()
+      // }
 
-      if (trackingIntervalRef.current) {
-        clearInterval(trackingIntervalRef.current)
-      }
+      // if (trackingIntervalRef.current) {
+      //   clearInterval(trackingIntervalRef.current)
+      // }
 
       toast.info('Interview session ended')
     })
@@ -304,16 +328,23 @@ function StartInterview() {
         setCurrentQuestion((prev) => Math.min(prev + 1, totalQuestions))
         setInterviewProgress((currentQuestion / totalQuestions) * 100)
 
-        // Record the question for tracking
-        if (trackingService) {
-          trackingService.setCurrentQuestion(message.content)
-        }
+        // Record the question for tracking - DISABLED
+        // if (trackingService) {
+        //   trackingService.setCurrentQuestion(message.content)
+        // }
       }
     })
   }
 
   const startCall = async () => {
-    if (!vapi || !interviewInfo) return
+    if (!vapi || !interviewInfo) {
+      console.error('Cannot start call:', {
+        vapiExists: !!vapi,
+        infoExists: !!interviewInfo,
+      })
+      toast.error('Vapi not initialized. Please refresh the page.')
+      return
+    }
 
     try {
       const questionList = interviewInfo?.interviewData?.questionList
@@ -324,6 +355,12 @@ function StartInterview() {
         toast.error('No questions found for this interview')
         return
       }
+
+      console.log('Starting Vapi call with:', {
+        userName: interviewInfo?.userName,
+        jobPosition: interviewInfo?.interviewData.jobPosition,
+        questionsCount: interviewInfo?.interviewData?.questionList?.length,
+      })
 
       const assistantOptions = {
         name: 'AI Recruiter',
@@ -367,10 +404,15 @@ Keep responses concise and natural. Focus on making the candidate comfortable wh
         },
       }
 
+      console.log('Calling vapi.start() with assistant options')
       vapi.start(assistantOptions)
     } catch (error) {
-      console.error('Failed to start call:', error)
-      toast.error('Failed to start interview. Please try again.')
+      console.error('Failed to start call:', {
+        message: error.message,
+        stack: error.stack,
+        error: error,
+      })
+      toast.error(`Failed to start interview: ${error.message}`)
     }
   }
 
@@ -378,17 +420,17 @@ Keep responses concise and natural. Focus on making the candidate comfortable wh
     if (vapi) {
       vapi.stop()
       setIsCallActive(false)
-      setTrackingStatus('completed')
+      // setTrackingStatus('completed') - DISABLED
 
-      // Stop tracking and calculate final score
-      if (trackingService) {
-        trackingService.stopTracking()
-        calculateFinalScore()
-      }
+      // Stop tracking and calculate final score - DISABLED
+      // if (trackingService) {
+      //   trackingService.stopTracking()
+      //   calculateFinalScore()
+      // }
 
-      if (trackingIntervalRef.current) {
-        clearInterval(trackingIntervalRef.current)
-      }
+      // if (trackingIntervalRef.current) {
+      //   clearInterval(trackingIntervalRef.current)
+      // }
     }
   }
 
@@ -425,31 +467,31 @@ Keep responses concise and natural. Focus on making the candidate comfortable wh
     }
   }
 
-  // Calculate final score using tracking service
-  const calculateFinalScore = async () => {
-    if (!trackingService) return
+  // Calculate final score using tracking service - DISABLED
+  // const calculateFinalScore = async () => {
+  //   if (!trackingService) return
 
-    try {
-      const scoreResult = await trackingService.calculateFinalScore()
+  //   try {
+  //     const scoreResult = await trackingService.calculateFinalScore()
 
-      toast.success(
-        `Interview completed! Final Score: ${Math.round(
-          scoreResult.finalScore * 100,
-        )}%`,
-      )
+  //     toast.success(
+  //       `Interview completed! Final Score: ${Math.round(
+  //         scoreResult.finalScore * 100,
+  //       )}%`,
+  //     )
 
-      // Store scores for display
-      setAnswerScores({
-        focusScore: scoreResult.focusScore,
-        answerScore: scoreResult.answerScore,
-        finalScore: scoreResult.finalScore,
-        breakdown: scoreResult.breakdown,
-      })
-    } catch (error) {
-      console.error('Failed to calculate final score:', error)
-      toast.error('Failed to calculate interview score')
-    }
-  }
+  //     // Store scores for display
+  //     setAnswerScores({
+  //       focusScore: scoreResult.focusScore,
+  //       answerScore: scoreResult.answerScore,
+  //       finalScore: scoreResult.finalScore,
+  //       breakdown: scoreResult.breakdown,
+  //     })
+  //   } catch (error) {
+  //     console.error('Failed to calculate final score:', error)
+  //     toast.error('Failed to calculate interview score')
+  //   }
+  // }
 
   const formatTime = (seconds) => {
     const hrs = Math.floor(seconds / 3600)
@@ -658,8 +700,8 @@ Keep responses concise and natural. Focus on making the candidate comfortable wh
           </div>
         </div>
 
-        {/* Focus Metrics Display */}
-        {trackingStatus !== 'inactive' && (
+        {/* Focus Metrics Display - DISABLED */}
+        {false && trackingStatus !== 'inactive' && (
           <div className='grid grid-cols-1 md:grid-cols-3 gap-4 mb-6'>
             <div className='text-center p-4 bg-blue-50 rounded-xl'>
               <div className='flex items-center justify-center gap-2 mb-2'>
@@ -710,48 +752,7 @@ Keep responses concise and natural. Focus on making the candidate comfortable wh
           </div>
         )}
 
-        {/* Test Controls for Development */}
-        {process.env.NODE_ENV === 'development' && (
-          <div className='mb-6 p-4 bg-gray-50 rounded-xl'>
-            <h3 className='text-sm font-medium text-gray-700 mb-2'>
-              Test Controls (Dev Only)
-            </h3>
-            <div className='flex gap-2'>
-              <button
-                onClick={() => {
-                  if (trackingService) {
-                    trackingService.handleTabSwitch('switch_away')
-                  }
-                }}
-                className='px-3 py-1 text-xs bg-red-100 text-red-700 rounded hover:bg-red-200'
-              >
-                Simulate Tab Away
-              </button>
-              <button
-                onClick={() => {
-                  if (trackingService) {
-                    trackingService.handleTabSwitch('switch_back')
-                  }
-                }}
-                className='px-3 py-1 text-xs bg-green-100 text-green-700 rounded hover:bg-green-200'
-              >
-                Simulate Tab Back
-              </button>
-              <button
-                onClick={() => {
-                  if (trackingService) {
-                    const metrics = trackingService.getFocusMetrics()
-                    setFocusMetrics(metrics)
-                    console.log('Current focus metrics:', metrics)
-                  }
-                }}
-                className='px-3 py-1 text-xs bg-blue-100 text-blue-700 rounded hover:bg-blue-200'
-              >
-                Refresh Metrics
-              </button>
-            </div>
-          </div>
-        )}
+        {/* Test Controls for Development - DISABLED */}
 
         {/* Interview Progress */}
         {isCallActive && (
@@ -778,53 +779,6 @@ Keep responses concise and natural. Focus on making the candidate comfortable wh
                 </div>
                 <div className='text-sm text-purple-600'>Complete</div>
               </div>
-            </div>
-          </div>
-        )}
-
-        {/* Final Scores Display */}
-        {answerScores.finalScore && (
-          <div className='mt-8 bg-gradient-to-r from-green-50 to-blue-50 rounded-2xl shadow-lg border border-green-200 p-6'>
-            <h3 className='text-lg font-semibold text-green-900 mb-4 text-center flex items-center justify-center gap-2'>
-              <CheckCircle className='h-5 w-5 text-green-600' />
-              Interview Results
-            </h3>
-            <div className='grid grid-cols-1 md:grid-cols-3 gap-4'>
-              <div className='text-center p-4 bg-white rounded-xl border border-green-200'>
-                <div className='text-2xl font-bold text-green-600'>
-                  {Math.round(answerScores.finalScore * 100)}%
-                </div>
-                <div className='text-sm text-green-600'>Final Score</div>
-              </div>
-              <div className='text-center p-4 bg-white rounded-xl border border-blue-200'>
-                <div className='text-2xl font-bold text-blue-600'>
-                  {Math.round(answerScores.focusScore * 100)}%
-                </div>
-                <div className='text-sm text-blue-600'>Focus Score</div>
-              </div>
-              <div className='text-center p-4 bg-white rounded-xl border border-purple-200'>
-                <div className='text-2xl font-bold text-purple-600'>
-                  {Math.round(answerScores.answerScore * 100)}%
-                </div>
-                <div className='text-sm text-purple-600'>Answer Score</div>
-              </div>
-            </div>
-            <div className='mt-4 text-center text-sm text-gray-600'>
-              Focus Weight: 40% | Answer Weight: 60%
-            </div>
-
-            {/* View Detailed Feedback Button */}
-            <div className='mt-6 text-center'>
-              <Button
-                onClick={() => setShowFeedback(true)}
-                className='bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white px-8 py-3 shadow-lg shadow-blue-500/25 hover:shadow-xl hover:shadow-blue-500/30 transition-all duration-200 hover:-translate-y-0.5'
-              >
-                <FileText className='h-5 w-5 mr-2' />
-                View Detailed Feedback Report
-              </Button>
-              <p className='text-xs text-gray-500 mt-2'>
-                Comprehensive analysis for hiring managers
-              </p>
             </div>
           </div>
         )}
@@ -942,8 +896,8 @@ Keep responses concise and natural. Focus on making the candidate comfortable wh
         </div>
       </div>
 
-      {/* Interview Feedback Modal */}
-      {showFeedback && (
+      {/* Interview Feedback Modal - DISABLED */}
+      {/* {showFeedback && (
         <InterviewFeedback
           interviewId={interviewInfo?.interview_id}
           candidateId={interviewInfo?.userName}
@@ -953,6 +907,7 @@ Keep responses concise and natural. Focus on making the candidate comfortable wh
           onClose={() => setShowFeedback(false)}
         />
       )}
+      */}
     </div>
   )
 }
