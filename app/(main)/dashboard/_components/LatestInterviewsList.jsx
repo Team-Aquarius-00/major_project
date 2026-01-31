@@ -156,10 +156,10 @@ function LatestInterviesList() {
                     <h3 className='font-semibold text-gray-900'>
                       {interview.job_position || 'Interview'}
                     </h3>
-                    <span className='text-xs text-gray-500 flex items-center gap-1'>
+                    {/* <span className='text-xs text-gray-500 flex items-center gap-1'>
                       <Clock className='h-3 w-3' />
                       {formatDate(interview.created_at)}
-                    </span>
+                    </span> */}
                   </div>
 
                   <p className='text-sm text-gray-600 mb-3'>

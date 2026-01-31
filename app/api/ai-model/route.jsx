@@ -15,7 +15,7 @@ export async function POST(req) {
 
     const openai = new OpenAI({
       baseURL: 'https://openrouter.ai/api/v1',
-      apiKey: process.env.OPENROUTER_API_KEY_COLLEGE,
+      apiKey: process.env.OPENROUTER_API_KEY_AMIRKA,
     })
 
     // First attempt: limit max tokens to avoid huge/expensive requests

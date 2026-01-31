@@ -5,7 +5,7 @@ import { useUser } from '@clerk/nextjs'
 import { useRouter } from 'next/navigation'
 import { useEffect } from 'react'
 
-const page = () => {
+const Page = () => {
   const { isSignedIn, isLoaded } = useUser()
   const router = useRouter()
 
@@ -148,4 +148,4 @@ const page = () => {
   )
 }
 
-export default page
+export default Page
