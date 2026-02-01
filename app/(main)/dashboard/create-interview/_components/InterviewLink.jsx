@@ -37,7 +37,7 @@ function InterviewLink({ interview_id, formData, onCreateNewInterview }) {
         formData?.type?.join(', ') || 'Technical'
       }\n- Position: ${
         formData?.jobPosition || 'Not specified'
-      }\n\nPlease click the link below to start your interview:\n${url}\n\nGood luck!\n\nBest regards,\nAI Recruitment Team`
+      }\n\nPlease click the link below to start your interview:\n${url}\n\nGood luck!\n\nBest regards,\nAI Recruitment Team`,
     )
     const mailtoLink = `mailto:?subject=${subject}&body=${body}`
     window.open(mailtoLink)
@@ -52,7 +52,7 @@ function InterviewLink({ interview_id, formData, onCreateNewInterview }) {
         formData?.type?.join(', ') || 'Technical'
       }\n• Position: ${
         formData?.jobPosition || 'Not specified'
-      }\n\n*Interview Link:* ${url}\n\nShare this with your candidates! 🚀`
+      }\n\n*Interview Link:* ${url}\n\nShare this with your candidates! 🚀`,
     )
     const slackLink = `https://slack.com/app_redirect?channel=general&text=${text}`
     window.open(slackLink, '_blank')
@@ -67,7 +67,7 @@ function InterviewLink({ interview_id, formData, onCreateNewInterview }) {
         formData?.type?.join(', ') || 'Technical'
       }\n• Position: ${
         formData?.jobPosition || 'Not specified'
-      }\n\n*Interview Link:* ${url}\n\nShare this with your candidates! 🚀`
+      }\n\n*Interview Link:* ${url}\n\nShare this with your candidates! 🚀`,
     )
     const whatsappLink = `https://wa.me/?text=${text}`
     window.open(whatsappLink, '_blank')
@@ -82,10 +82,10 @@ function InterviewLink({ interview_id, formData, onCreateNewInterview }) {
         formData?.type?.join(', ') || 'Technical'
       }\n• Position: ${
         formData?.jobPosition || 'Not specified'
-      }\n\nInterview Link: ${url}\n\nShare this with your candidates! 🚀`
+      }\n\nInterview Link: ${url}\n\nShare this with your candidates! 🚀`,
     )
     const linkedinLink = `https://www.linkedin.com/sharing/share-offsite/?url=${encodeURIComponent(
-      url
+      url,
     )}&title=${encodeURIComponent('AI Interview Invitation')}&summary=${text}`
     window.open(linkedinLink, '_blank')
     toast('LinkedIn sharing opened')
@@ -114,9 +114,6 @@ function InterviewLink({ interview_id, formData, onCreateNewInterview }) {
       <div className='w-full bg-white p-8 rounded-2xl shadow-sm border border-gray-100 mb-6'>
         <div className='flex justify-between items-center mb-6'>
           <h2 className='font-bold text-lg text-gray-900'>Interview Link</h2>
-          <div className='px-3 py-1 text-sm font-medium text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-full'>
-            Valid for 1 day
-          </div>
         </div>
         <div className='flex gap-3 items-center'>
           <Input
@@ -161,7 +158,7 @@ function InterviewLink({ interview_id, formData, onCreateNewInterview }) {
             <div>
               <p className='text-xs text-gray-500 font-medium'>Date</p>
               <p className='text-sm font-semibold text-gray-900'>
-                {formData?.date || '5th July'}
+                {formData?.date || '1st February'}
               </p>
             </div>
           </div>

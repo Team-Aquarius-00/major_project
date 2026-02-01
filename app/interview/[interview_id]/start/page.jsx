@@ -233,8 +233,40 @@ function StartInterview() {
   }
 
   const initializeInterview = () => {
+    // #region agent log
+    const logInit = (message, data, hypothesisId) => {
+      fetch(
+        'http://127.0.0.1:7242/ingest/c421bdd3-c349-4d0f-951d-bc46f02d9190',
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            location: 'start/page.jsx:initializeInterview',
+            message,
+            data: data || {},
+            timestamp: Date.now(),
+            sessionId: 'debug-session',
+            hypothesisId,
+          }),
+        },
+      ).catch(() => {})
+    }
+    logInit(
+      'initializeInterview entry',
+      { interviewInfoExists: !!interviewInfo },
+      'A',
+    )
+    // #endregion
     try {
       const apiKey = process.env.NEXT_PUBLIC_VAPI_PUBLIC_KEY
+
+      // #region agent log
+      logInit(
+        'apiKey checked',
+        { apiKeyExists: !!apiKey, apiKeyLength: (apiKey || '').length },
+        'A',
+      )
+      // #endregion
 
       // Debug logging
       console.log('Vapi initialization:', {
@@ -251,6 +283,10 @@ function StartInterview() {
 
       const vapiInstance = new Vapi(apiKey)
 
+      // #region agent log
+      logInit('Vapi instance created', { hasInstance: !!vapiInstance }, 'D')
+      // #endregion
+
       // Test connection
       console.log('Vapi instance created:', vapiInstance)
       setVapi(vapiInstance)
@@ -258,24 +294,77 @@ function StartInterview() {
       // Set up event listeners
       setupVapiEventListeners(vapiInstance)
 
+      // #region agent log
+      logInit('setupVapiEventListeners completed', {}, 'D')
+      // #endregion
+
       // Calculate total questions
       const questions = interviewInfo?.interviewData?.questionList || []
       setTotalQuestions(questions.length)
 
       console.log('Interview initialized successfully')
     } catch (err) {
+      // #region agent log
+      logInit(
+        'initializeInterview catch',
+        { message: err?.message, name: err?.name },
+        'A',
+      )
+      // #endregion
       console.error('Vapi initialization error:', {
         message: err.message,
         stack: err.stack,
         error: err,
       })
       setError(
-        `Failed to initialize Vapi: ${err.message || 'Unknown error'}. Please refresh the page.`,
+        `Failed to initialize Vapi: ${
+          err.message || 'Unknown error'
+        }. Please refresh the page.`,
       )
     }
   }
 
   const setupVapiEventListeners = (vapiInstance) => {
+    // #region agent log
+    vapiInstance.on('error', (e) => {
+      fetch(
+        'http://127.0.0.1:7242/ingest/c421bdd3-c349-4d0f-951d-bc46f02d9190',
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            location: 'start/page.jsx:vapi-error',
+            message: 'vapi error event',
+            data: {
+              type: e?.type,
+              stage: e?.stage,
+              error: String(e?.error ?? e),
+            },
+            timestamp: Date.now(),
+            sessionId: 'debug-session',
+            hypothesisId: 'C',
+          }),
+        },
+      ).catch(() => {})
+    })
+    vapiInstance.on('call-start-failed', (e) => {
+      fetch(
+        'http://127.0.0.1:7242/ingest/c421bdd3-c349-4d0f-951d-bc46f02d9190',
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            location: 'start/page.jsx:call-start-failed',
+            message: 'call-start-failed',
+            data: { stage: e?.stage, error: e?.error },
+            timestamp: Date.now(),
+            sessionId: 'debug-session',
+            hypothesisId: 'C',
+          }),
+        },
+      ).catch(() => {})
+    })
+    // #endregion
     vapiInstance.on('call-start', () => {
       console.log('Call has started')
       setIsCallActive(true)
@@ -298,17 +387,6 @@ function StartInterview() {
     vapiInstance.on('call-end', () => {
       console.log('Call has ended')
       setIsCallActive(false)
-      // setTrackingStatus('completed') - DISABLED
-
-      // Stop tracking and calculate final score - DISABLED
-      // if (trackingService) {
-      //   trackingService.stopTracking()
-      //   calculateFinalScore()
-      // }
-
-      // if (trackingIntervalRef.current) {
-      //   clearInterval(trackingIntervalRef.current)
-      // }
 
       toast.info('Interview session ended')
     })
@@ -337,6 +415,20 @@ function StartInterview() {
   }
 
   const startCall = async () => {
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/c421bdd3-c349-4d0f-951d-bc46f02d9190', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        location: 'start/page.jsx:startCall entry',
+        message: 'startCall entry',
+        data: { vapiExists: !!vapi, interviewInfoExists: !!interviewInfo },
+        timestamp: Date.now(),
+        sessionId: 'debug-session',
+        hypothesisId: 'B',
+      }),
+    }).catch(() => {})
+    // #endregion
     if (!vapi || !interviewInfo) {
       console.error('Cannot start call:', {
         vapiExists: !!vapi,
@@ -347,6 +439,23 @@ function StartInterview() {
     }
 
     try {
+      // #region agent log
+      fetch(
+        'http://127.0.0.1:7242/ingest/c421bdd3-c349-4d0f-951d-bc46f02d9190',
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            location: 'start/page.jsx:before vapi.start',
+            message: 'before vapi.start',
+            data: {},
+            timestamp: Date.now(),
+            sessionId: 'debug-session',
+            hypothesisId: 'C',
+          }),
+        },
+      ).catch(() => {})
+      // #endregion
       const questionList = interviewInfo?.interviewData?.questionList
         ?.map((item) => item?.question)
         .join(', ')
@@ -406,7 +515,41 @@ Keep responses concise and natural. Focus on making the candidate comfortable wh
 
       console.log('Calling vapi.start() with assistant options')
       vapi.start(assistantOptions)
+      // #region agent log
+      fetch(
+        'http://127.0.0.1:7242/ingest/c421bdd3-c349-4d0f-951d-bc46f02d9190',
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            location: 'start/page.jsx:after vapi.start called',
+            message: 'vapi.start() invoked',
+            data: {},
+            timestamp: Date.now(),
+            sessionId: 'debug-session',
+            hypothesisId: 'C',
+          }),
+        },
+      ).catch(() => {})
+      // #endregion
     } catch (error) {
+      // #region agent log
+      fetch(
+        'http://127.0.0.1:7242/ingest/c421bdd3-c349-4d0f-951d-bc46f02d9190',
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            location: 'start/page.jsx:startCall catch',
+            message: 'startCall error',
+            data: { message: error?.message, name: error?.name },
+            timestamp: Date.now(),
+            sessionId: 'debug-session',
+            hypothesisId: 'C',
+          }),
+        },
+      ).catch(() => {})
+      // #endregion
       console.error('Failed to start call:', {
         message: error.message,
         stack: error.stack,
@@ -601,7 +744,7 @@ Keep responses concise and natural. Focus on making the candidate comfortable wh
                 AI Recruiter
               </h2>
               <p className='text-gray-600 mb-4'>
-                {activeUser ? 'Listening to your response...' : 'Speaking...'}
+                {/* {activeUser ? 'Listening to your response...' : 'Speaking...'} */}
               </p>
 
               {!isCallActive && (
@@ -679,7 +822,7 @@ Keep responses concise and natural. Focus on making the candidate comfortable wh
                 {interviewInfo?.userName || 'Candidate'}
               </h2>
               <p className='text-gray-600 mb-4'>
-                {activeUser ? 'Your turn to speak' : 'AI is speaking...'}
+                {/* {activeUser ? 'Your turn to speak' : 'AI is speaking...'} */}
               </p>
 
               {/* Progress Bar */}
@@ -895,19 +1038,6 @@ Keep responses concise and natural. Focus on making the candidate comfortable wh
           </div>
         </div>
       </div>
-
-      {/* Interview Feedback Modal - DISABLED */}
-      {/* {showFeedback && (
-        <InterviewFeedback
-          interviewId={interviewInfo?.interview_id}
-          candidateId={interviewInfo?.userName}
-          focusMetrics={focusMetrics}
-          answerScores={answerScores}
-          finalScore={answerScores.finalScore}
-          onClose={() => setShowFeedback(false)}
-        />
-      )}
-      */}
     </div>
   )
 }
