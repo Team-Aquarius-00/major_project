@@ -13,7 +13,7 @@ import './globals.css'
 import { Toaster } from '@/components/ui/sonner'
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
-import { Zap } from 'lucide-react'
+import Provider from './provider'
 // import Dashboard from '@/app/(main)/dashboard/page'
 
 // Fonts
@@ -30,7 +30,7 @@ const geistMono = Geist_Mono({
 // Metadata (merged info)
 export const metadata: Metadata = {
   title: 'AI Recruitment',
-  description: 'AI recruitment platform with Clerk authentication',
+  description: 'AI recruitment platform',
 }
 
 export default function RootLayout({
@@ -51,12 +51,7 @@ export default function RootLayout({
                 className='flex items-center gap-3 group'
                 aria-label='AI Recruitment Home'
               >
-                <div className='relative'>
-                  <div className='w-10 h-10 bg-gradient-to-br from-blue-600 to-purple-600 rounded-xl flex items-center justify-center shadow-lg shadow-blue-500/25 group-hover:shadow-xl group-hover:shadow-blue-500/30 transition-all duration-300'>
-                    <Zap className='h-6 w-6 text-white' />
-                  </div>
-                  <div className='absolute -top-1 -right-1 w-3 h-3 bg-gradient-to-r from-emerald-400 to-cyan-400 rounded-full animate-pulse'></div>
-                </div>
+                <div className='relative'></div>
                 <div className='flex flex-col'>
                   <span className='font-bold text-xl tracking-tight text-gray-900 group-hover:text-gray-700 transition-colors'>
                     AI Recruitment
@@ -120,7 +115,7 @@ export default function RootLayout({
 
           <main className='pt-20 min-h-screen'>
             {/* <Dashboard /> */}
-            {children}
+            <Provider>{children}</Provider>
           </main>
 
           <Toaster />

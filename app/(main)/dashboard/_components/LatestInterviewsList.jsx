@@ -3,7 +3,7 @@ import { Camera, Plus, Clock, Trash2 } from 'lucide-react'
 import React, { useState, useEffect } from 'react'
 import { Button } from '@/components/ui/button'
 import { useRouter } from 'next/navigation'
-import { supabase } from '@/services/supabaseClient'
+import axios from 'axios'
 
 function LatestInterviesList() {
   const router = useRouter()
@@ -17,19 +17,16 @@ function LatestInterviesList() {
   const fetchInterviews = async () => {
     try {
       setLoading(true)
-      const { data, error } = await supabase
-        .from('Interview')
-        .select('job_position, type,created_at, duration')
-      console.log(data)
+      const response = await axios.get('/api/interview')
 
-      if (error) {
-        console.error('Error fetching interviews:', error)
+      if (!response.data.success) {
+        console.error('Error fetching interviews')
         setInterviewList([])
         return
       }
 
-      if (data && data.length > 0) {
-        setInterviewList(data)
+      if (response.data.data && response.data.data.length > 0) {
+        setInterviewList(response.data.data)
       } else {
         setInterviewList([])
       }
@@ -49,7 +46,9 @@ function LatestInterviesList() {
     if (!confirm('Are you sure you want to delete this interview?')) return
 
     try {
-      await supabase.from('Interview').delete().eq('id', interviewId)
+      await axios.delete('/api/interview', {
+        data: { id: interviewId },
+      })
 
       setInterviewList((prev) => prev.filter((i) => i.id !== interviewId))
     } catch (err) {

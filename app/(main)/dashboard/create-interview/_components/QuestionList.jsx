@@ -4,7 +4,6 @@ import { toast } from 'sonner'
 import { Loader2, Loader2Icon } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import QuestionlistContainer from './QuestionListContainer'
-import { supabase } from '@/services/supabaseClient'
 import { v4 as uuidv4 } from 'uuid'
 import { useUser as useClerkUser } from '@clerk/nextjs'
 
@@ -68,45 +67,24 @@ function QuestionList({ formData, onCreateLink }) {
           clerkUser?.emailAddresses?.[0]?.emailAddress,
       }
 
-      const { data, error } = await supabase
-        .from('Interview')
-        .insert([insertObj])
-        .select()
+      const response = await axios.post('/api/interview', insertObj)
 
       setSaveLoading(false)
 
-      if (error) {
-        console.error('Supabase insert error:', error)
-        // Helpful hint if table missing or permission denied
-        const msg = String(error.message || error)
-        if (
-          msg.toLowerCase().includes('relation') ||
-          msg.toLowerCase().includes('does not exist') ||
-          msg.toLowerCase().includes('no such table')
-        ) {
-          toast('Database table missing. Create `Interviews` table in your DB.')
-        } else if (
-          msg.toLowerCase().includes('permission') ||
-          msg.toLowerCase().includes('policy')
-        ) {
-          toast('Permission denied. Check Supabase RLS/policies and API keys.')
-        } else {
-          toast('Failed to save interview: ' + msg)
-        }
+      if (!response.data.success) {
+        toast('Failed to save interview')
         return
       }
 
-      if (!data || data.length === 0) {
-        toast('No data returned after saving. Check DB.')
-        return
-      }
-
-      console.log('Saved interview:', data)
+      console.log('Saved interview:', response.data.data)
       onCreateLink(interview_id)
     } catch (e) {
       setSaveLoading(false)
       console.error('Unexpected error saving interview:', e)
-      toast('Unexpected error saving interview. See console for details.')
+      const errorMsg =
+        e.response?.data?.error ||
+        'Unexpected error saving interview. See console for details.'
+      toast(errorMsg)
     }
   }
 

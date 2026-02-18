@@ -18,8 +18,8 @@ import {
   Monitor,
 } from 'lucide-react'
 import { useParams, useRouter } from 'next/navigation'
-import { supabase } from '@/services/supabaseClient'
 import { toast } from 'sonner'
+import axios from 'axios'
 import { InterviewDataContext } from '../../../context/InterviewDataContext'
 
 function Interview() {
@@ -42,24 +42,18 @@ function Interview() {
   const GetInterviewDetails = async () => {
     setLoading(true)
     try {
-      let { data: Interview, error } = await supabase
-        .from('Interview')
-        .select('job_position, job_description, type, duration')
-        .eq('interview_id', interview_id)
+      const response = await axios.get(
+        `/api/interview?interview_id=${interview_id}`,
+      )
 
-      if (error) {
+      if (!response.data.success) {
         toast.error('Failed to fetch interview details')
         return
       }
 
-      if (!Interview || Interview.length === 0) {
-        toast.error('Interview not found')
-        return
-      }
-
-      console.log(Interview[0])
-      setInterviewData(Interview[0])
-      setInterviewInfo(Interview[0])
+      console.log(response.data.data)
+      setInterviewData(response.data.data)
+      setInterviewInfo(response.data.data)
     } catch (error) {
       console.log(error)
       toast.error('Failed to load interview details')
@@ -75,20 +69,19 @@ function Interview() {
 
     setLoading(true)
     try {
-      let { data: Interview, error } = await supabase
-        .from('Interview')
-        .select('*')
-        .eq('interview_id', interview_id)
+      const response = await axios.get(
+        `/api/interview?interview_id=${interview_id}`,
+      )
 
-      if (error || !Interview || Interview.length === 0) {
+      if (!response.data.success) {
         toast.error('Interview not found')
         return
       }
 
-      console.log(Interview[0])
+      console.log(response.data.data)
       setInterviewInfo({
         userName: userName.trim(),
-        interviewData: Interview[0],
+        interviewData: response.data.data,
       })
       router.push('/interview/' + interview_id + '/start')
     } catch (error) {
