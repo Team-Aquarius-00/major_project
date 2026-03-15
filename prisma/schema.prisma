@@ -13,11 +13,14 @@ model Interview {
   job_position    String?
   job_description String?
   duration        String?
-  type            String?
+  type            String[]
   questionList    Json?
   userEmail       String?
   completed       Boolean?
   created_at      DateTime? @default(now()) @db.Timestamptz(6)
+  feedback        Json?
+  scoring         Json?
+  tracking        Json?
 }
 
 model Users {
@@ -26,5 +29,4 @@ model Users {
   email      String?   @unique(map: "users_email_key")
   picture    String?
   created_at DateTime? @default(now()) @db.Timestamp(6)
-  
 }

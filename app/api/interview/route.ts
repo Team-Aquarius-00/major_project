@@ -1,3 +1,4 @@
+import 'dotenv/config'
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 
@@ -34,10 +35,10 @@ export async function POST(request: NextRequest) {
     })
 
     return NextResponse.json({ success: true, data: interview })
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Error creating interview:', error)
     return NextResponse.json(
-      { error: error.message || 'Failed to create interview' },
+      { error: error || 'Failed to create interview' },
       { status: 500 },
     )
   }
@@ -76,10 +77,10 @@ export async function GET(request: NextRequest) {
     })
 
     return NextResponse.json({ success: true, data: interviews })
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Error fetching interviews:', error)
     return NextResponse.json(
-      { error: error.message || 'Failed to fetch interviews' },
+      { error: error || 'Failed to fetch interviews' },
       { status: 500 },
     )
   }
@@ -102,10 +103,10 @@ export async function DELETE(request: NextRequest) {
     })
 
     return NextResponse.json({ success: true })
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Error deleting interview:', error)
     return NextResponse.json(
-      { error: error.message || 'Failed to delete interview' },
+      { error: error || 'Failed to delete interview' },
       { status: 500 },
     )
   }

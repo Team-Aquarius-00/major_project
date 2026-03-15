@@ -3,11 +3,9 @@ import type { NextConfig } from 'next'
 const nextConfig: NextConfig = {
   /* config options here */
   images: {
-    domains: [
-      'lh3.googleusercontent.com',
-      'images.domains',
-      'img.clerk.com',
-      'images.remorePatterns',
+    remotePatterns: [
+      { protocol: 'https', hostname: 'lh3.googleusercontent.com' },
+      { protocol: 'https', hostname: 'img.clerk.com' },
     ],
   },
 }

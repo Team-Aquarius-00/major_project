@@ -1,9 +1,5 @@
-// backend/routes/users.ts (example)
-// import { PrismaClient } from '@prisma/client'
-
-import { prisma } from "@/lib/prisma"
-
-
+import 'dotenv/config'
+import { prisma } from '@/lib/prisma'
 
 export async function createOrFetchUser(
   email: string,
