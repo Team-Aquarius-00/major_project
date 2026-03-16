@@ -22,6 +22,16 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    // Fetch user to get userId
+    let user_id: number | null = null
+    if (userEmail) {
+      const user = await prisma.users.findUnique({
+        where: { email: userEmail },
+        select: { id: true },
+      })
+      user_id = user?.id || null
+    }
+
     const interview = await prisma.interview.create({
       data: {
         interview_id,
@@ -31,6 +41,7 @@ export async function POST(request: NextRequest) {
         type,
         questionList,
         userEmail,
+        user_id,
       },
     })
 

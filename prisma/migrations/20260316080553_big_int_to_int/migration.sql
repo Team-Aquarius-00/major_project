@@ -5,18 +5,22 @@ CREATE TABLE "Interview" (
     "job_position" TEXT,
     "job_description" TEXT,
     "duration" TEXT,
-    "type" TEXT,
     "questionList" JSONB,
     "userEmail" TEXT,
     "completed" BOOLEAN,
     "created_at" TIMESTAMPTZ(6) DEFAULT CURRENT_TIMESTAMP,
+    "feedback" JSONB,
+    "scoring" JSONB,
+    "tracking" JSONB,
+    "type" TEXT[],
+    "user_id" INTEGER,
 
     CONSTRAINT "Interview_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateTable
 CREATE TABLE "Users" (
-    "id" BIGSERIAL NOT NULL,
+    "id" SERIAL NOT NULL,
     "name" TEXT,
     "email" TEXT,
     "picture" TEXT,

@@ -4,20 +4,27 @@ import React, { useState, useEffect } from 'react'
 import { Button } from '@/components/ui/button'
 import { useRouter } from 'next/navigation'
 import axios from 'axios'
+import { useUser } from '@/app/provider'
 
 function LatestInterviesList() {
   const router = useRouter()
+  const { user } = useUser()
   const [interviewList, setInterviewList] = useState([])
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    fetchInterviews()
-  }, [])
+    if (user) {
+      fetchInterviews()
+    }
+  }, [user])
 
   const fetchInterviews = async () => {
     try {
       setLoading(true)
-      const response = await axios.get('/api/interview')
+      const url = user?.email
+        ? `/api/interview?userEmail=${encodeURIComponent(user.email)}`
+        : '/api/interview'
+      const response = await axios.get(url)
 
       if (!response.data.success) {
         console.error('Error fetching interviews')

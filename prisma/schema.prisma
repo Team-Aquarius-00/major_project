@@ -13,7 +13,6 @@ model Interview {
   job_position    String?
   job_description String?
   duration        String?
-  type            String[]
   questionList    Json?
   userEmail       String?
   completed       Boolean?
@@ -21,10 +20,12 @@ model Interview {
   feedback        Json?
   scoring         Json?
   tracking        Json?
+  type            String[]
+  user_id         Int?
 }
 
 model Users {
-  id         BigInt    @id(map: "users_pkey") @default(autoincrement())
+  id         Int       @id(map: "users_pkey") @default(autoincrement())
   name       String?
   email      String?   @unique(map: "users_email_key")
   picture    String?
