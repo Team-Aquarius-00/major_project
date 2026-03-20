@@ -59,6 +59,7 @@ export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url)
     const interviewId = searchParams.get('interview_id')
+    const userEmail = searchParams.get('userEmail')
 
     if (interviewId) {
       // Fetch specific interview by interview_id
@@ -76,8 +77,9 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ success: true, data: interview })
     }
 
-    // Fetch all interviews
+    // Fetch interviews filtered by userEmail if provided
     const interviews = await prisma.interview.findMany({
+      where: userEmail ? { userEmail } : {},
       select: {
         id: true,
         job_position: true,
