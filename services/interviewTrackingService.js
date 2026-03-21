@@ -14,6 +14,7 @@ class InterviewTrackingService {
       },
       tabSwitches: {
         count: 0,
+        uiSwitchCount: 0,
         totalTimeAway: 0,
         lastSwitchTime: Date.now(),
         isCurrentlyAway: false,
@@ -234,6 +235,7 @@ class InterviewTrackingService {
     // Update local metrics immediately for real-time updates
     if (eventType === 'switch_away' || eventType === 'window_blur') {
       this.focusMetrics.tabSwitches.isCurrentlyAway = true
+      this.focusMetrics.tabSwitches.uiSwitchCount++
       this.focusMetrics.tabSwitches.lastSwitchTime = now
       console.log('User switched away from interview')
     } else if (eventType === 'switch_back' || eventType === 'window_focus') {

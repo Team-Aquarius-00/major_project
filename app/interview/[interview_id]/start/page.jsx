@@ -57,29 +57,35 @@ function StartInterview() {
   const [isVideoOn, setIsVideoOn] = useState(true)
   const [videoStream, setVideoStream] = useState(null)
   const [videoError, setVideoError] = useState(null)
+  const [isVideoLoading, setIsVideoLoading] = useState(false)
 
-  // Tracking states - DISABLED
-  // const [trackingService, setTrackingService] = useState(null)
-  // const [focusMetrics, setFocusMetrics] = useState({
-  //   eyeMovement: { distractions: 0, totalSamples: 0, distractionRate: 0 },
-  //   tabSwitches: { count: 0, totalTimeAway: 0, focusScore: 100 },
-  //   screenFocus: { percentage: 100 },
-  // })
-  // const [trackingStatus, setTrackingStatus] = useState('inactive')
+  // Tracking states
+  const [trackingService, setTrackingService] = useState(null)
+  const [focusMetrics, setFocusMetrics] = useState({
+    eyeMovement: { distractions: 0, totalSamples: 0, distractionRate: 0 },
+    tabSwitches: {
+      count: 0,
+      uiSwitchCount: 0,
+      totalTimeAway: 0,
+      focusScore: 100,
+    },
+    screenFocus: { percentage: 100 },
+  })
+  const [trackingStatus, setTrackingStatus] = useState('inactive')
+  const [maxTabSwitches] = useState(5)
   const [currentAnswer, setCurrentAnswer] = useState('')
-  // const [answerScores, setAnswerScores] = useState({})
   const [showFeedback, setShowFeedback] = useState(false)
 
   const durationRef = useRef(null)
   const progressRef = useRef(null)
   const videoRef = useRef(null)
-  // const trackingIntervalRef = useRef(null) - DISABLED
+  const trackingIntervalRef = useRef(null)
 
   useEffect(() => {
     if (interviewInfo) {
       initializeInterview()
       initializeVideo()
-      // initializeTracking() - DISABLED
+      initializeTracking()
     } else {
       // If user opened the start URL directly (no context), redirect them
       // back to the interview join page so they can enter their name.
@@ -93,37 +99,37 @@ function StartInterview() {
     }
   }, [interviewInfo])
 
-  // Manage tracking when call status changes - DISABLED
-  // useEffect(() => {
-  //   if (trackingService) {
-  //     if (isCallActive) {
-  //       // Ensure tracking is active when call starts
-  //       if (!trackingService.isTracking) {
-  //         trackingService.startTracking()
-  //         setTrackingStatus('active')
-  //         console.log('Tracking resumed due to call activation')
-  //       }
-  //     } else {
-  //       // Pause tracking when call is not active
-  //       if (trackingService.isTracking) {
-  //         trackingService.stopTracking()
-  //         setTrackingStatus('paused')
-  //         console.log('Tracking paused due to call deactivation')
-  //       }
-  //     }
-  //   }
-  // }, [isCallActive, trackingService])
+  // Manage tracking when call status changes
+  useEffect(() => {
+    if (trackingService) {
+      if (isCallActive) {
+        // Ensure tracking is active when call starts
+        if (!trackingService.isTracking) {
+          trackingService.startTracking()
+          setTrackingStatus('active')
+          console.log('Tracking resumed due to call activation')
+        }
+      } else {
+        // Pause tracking when call is not active
+        if (trackingService.isTracking) {
+          trackingService.stopTracking()
+          setTrackingStatus('paused')
+          console.log('Tracking paused due to call deactivation')
+        }
+      }
+    }
+  }, [isCallActive, trackingService])
 
-  // Debug tracking service status - DISABLED
-  // useEffect(() => {
-  //   if (trackingService) {
-  //     console.log('Tracking service status:', {
-  //       isTracking: trackingService.isTracking,
-  //       focusMetrics: trackingService.getFocusMetrics(),
-  //       trackingStatus,
-  //     })
-  //   }
-  // }, [trackingService, trackingStatus])
+  // Debug tracking service status
+  useEffect(() => {
+    if (trackingService) {
+      console.log('Tracking service status:', {
+        isTracking: trackingService.isTracking,
+        focusMetrics: trackingService.getFocusMetrics(),
+        trackingStatus,
+      })
+    }
+  }, [trackingService, trackingStatus])
 
   useEffect(() => {
     if (isCallActive) {
@@ -136,52 +142,103 @@ function StartInterview() {
     }
   }, [isCallActive])
 
-  // Initialize tracking service - DISABLED
-  // const initializeTracking = () => {
-  //   if (!interviewInfo?.interview_id || !interviewInfo?.userName) return
+  // Initialize tracking service
+  const initializeTracking = () => {
+    if (!interviewInfo?.interview_id || !interviewInfo?.userName) {
+      console.warn('Cannot initialize tracking: missing interview info')
+      return
+    }
 
-  //   const service = new InterviewTrackingService(
-  //     interviewInfo.interview_id,
-  //     interviewInfo.userName,
-  //   )
-  //   setTrackingService(service)
+    try {
+      const service = new InterviewTrackingService(
+        interviewInfo.interview_id,
+        interviewInfo.userName,
+      )
+      setTrackingService(service)
 
-  //   // Add global reference for debugging (development only)
-  //   if (process.env.NODE_ENV === 'development') {
-  //     window.trackingService = service
-  //     console.log(
-  //       'Tracking service available globally as window.trackingService',
-  //     )
-  //   }
+      // Override the handleTabSwitch method to add UI notifications
+      const originalHandleTabSwitch = service.handleTabSwitch.bind(service)
+      service.handleTabSwitch = async (eventType) => {
+        // Add UI notifications for tab switches
+        if (eventType === 'switch_away' || eventType === 'window_blur') {
+          const currentMetrics = service.getFocusMetrics()
+          const currentSwitchCount = currentMetrics.tabSwitches.uiSwitchCount
 
-  //   // Start tracking immediately - don't wait for isCallActive
-  //   service.startTracking()
-  //   setTrackingStatus('active')
+          if (currentSwitchCount <= maxTabSwitches) {
+            toast.warning(
+              `New tab added! (${currentSwitchCount}/${maxTabSwitches})`,
+              {
+                description: 'Please stay focused on the interview.',
+                duration: 3000,
+              },
+            )
+          } else {
+            toast.error(
+              `Maximum tab switches exceeded! (${currentSwitchCount}/${maxTabSwitches})`,
+              {
+                description: 'This may affect your interview score.',
+                duration: 5000,
+              },
+            )
+          }
+        }
 
-  //   // Update focus metrics every 2 seconds for more responsive updates
-  //   trackingIntervalRef.current = setInterval(() => {
-  //     const metrics = service.getFocusMetrics()
-  //     setFocusMetrics(metrics)
-  //   }, 2000)
+        // Call original method to handle the actual tracking logic
+        await originalHandleTabSwitch(eventType)
 
-  //   console.log('Tracking service initialized and started')
-  // }
+        // Update UI with latest metrics
+        const updatedMetrics = service.getFocusMetrics()
+        setFocusMetrics(updatedMetrics)
+      }
 
-  // Cleanup tracking on unmount - DISABLED
-  // useEffect(() => {
-  //   return () => {
-  //     if (trackingService) {
-  //       trackingService.stopTracking()
-  //     }
-  //     if (trackingIntervalRef.current) {
-  //       clearInterval(trackingIntervalRef.current)
-  //     }
-  //   }
-  // }, [trackingService])
+      // Add global reference for debugging (development only)
+      if (process.env.NODE_ENV === 'development') {
+        window.trackingService = service
+        console.log(
+          'Tracking service available globally as window.trackingService',
+        )
+      }
+
+      // Start tracking immediately - don't wait for isCallActive
+      service.startTracking()
+      setTrackingStatus('active')
+
+      // Update focus metrics every 2 seconds for more responsive updates
+      trackingIntervalRef.current = setInterval(() => {
+        if (service && service.isTracking) {
+          const metrics = service.getFocusMetrics()
+          setFocusMetrics(metrics)
+        }
+      }, 2000)
+
+      console.log('Tracking service initialized and started')
+    } catch (error) {
+      console.error('Failed to initialize tracking service:', error)
+      setTrackingStatus('error')
+      toast.error('Failed to initialize focus tracking')
+    }
+  }
+
+  // Cleanup tracking on unmount
+  useEffect(() => {
+    return () => {
+      if (trackingService) {
+        trackingService.stopTracking()
+      }
+      if (trackingIntervalRef.current) {
+        clearInterval(trackingIntervalRef.current)
+      }
+    }
+  }, [trackingService])
 
   // Initialize video camera
   const initializeVideo = async () => {
+    if (isVideoLoading) return // Prevent multiple initialization attempts
+
     try {
+      setIsVideoLoading(true)
+      setVideoError(null)
+
       const stream = await navigator.mediaDevices.getUserMedia({
         video: {
           width: { ideal: 640 },
@@ -192,17 +249,31 @@ function StartInterview() {
       })
 
       setVideoStream(stream)
-      setVideoError(null)
 
       if (videoRef.current) {
         videoRef.current.srcObject = stream
       }
+
+      console.log('Video stream initialized successfully')
     } catch (err) {
       console.error('Failed to access camera:', err)
-      setVideoError('Camera access denied. Please allow camera permissions.')
-      toast.error(
-        'Camera access denied. Please check your browser permissions.',
-      )
+      let errorMessage =
+        'Camera access denied. Please allow camera permissions.'
+
+      if (err.name === 'NotAllowedError') {
+        errorMessage =
+          'Camera permission denied. Please enable camera access in your browser settings.'
+      } else if (err.name === 'NotFoundError') {
+        errorMessage = 'No camera found. Please connect a camera and try again.'
+      } else if (err.name === 'NotReadableError') {
+        errorMessage =
+          'Camera is being used by another application. Please close other apps using the camera.'
+      }
+
+      setVideoError(errorMessage)
+      toast.error(errorMessage)
+    } finally {
+      setIsVideoLoading(false)
     }
   }
 
@@ -235,28 +306,29 @@ function StartInterview() {
   const initializeInterview = () => {
     // #region agent log
     const logInit = (message, data, hypothesisId) => {
-      fetch(
-        'http://127.0.0.1:7242/ingest/c421bdd3-c349-4d0f-951d-bc46f02d9190',
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            location: 'start/page.jsx:initializeInterview',
-            message,
-            data: data || {},
-            timestamp: Date.now(),
-            sessionId: 'debug-session',
-            hypothesisId,
-          }),
-        },
-      ).catch(() => {})
+      if (!interview_id) return // Safety check
+      fetch(`http://127.0.0.1:7242/ingest/${interview_id}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          location: 'start/page.jsx:initializeInterview',
+          message,
+          data: data || {},
+          timestamp: Date.now(),
+          sessionId: 'debug-session',
+          hypothesisId,
+        }),
+      }).catch((err) => {
+        console.warn('Failed to send log:', err)
+      })
     }
-    logInit(
-      'initializeInterview entry',
-      { interviewInfoExists: !!interviewInfo },
-      'A',
-    )
     // #endregion
+
+    if (!interview_id) {
+      setError('Invalid interview session. Please start over.')
+      return
+    }
+
     try {
       const apiKey = process.env.NEXT_PUBLIC_VAPI_PUBLIC_KEY
 
@@ -327,59 +399,41 @@ function StartInterview() {
   const setupVapiEventListeners = (vapiInstance) => {
     // #region agent log
     vapiInstance.on('error', (e) => {
-      fetch(
-        'http://127.0.0.1:7242/ingest/c421bdd3-c349-4d0f-951d-bc46f02d9190',
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            location: 'start/page.jsx:vapi-error',
-            message: 'vapi error event',
-            data: {
-              type: e?.type,
-              stage: e?.stage,
-              error: String(e?.error ?? e),
-            },
-            timestamp: Date.now(),
-            sessionId: 'debug-session',
-            hypothesisId: 'C',
-          }),
-        },
-      ).catch(() => {})
+      fetch(`http://127.0.0.1:7242/ingest/${interview_id}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          location: 'start/page.jsx:vapi-error',
+          message: 'vapi error event',
+          data: {
+            type: e?.type,
+            stage: e?.stage,
+            error: String(e?.error ?? e),
+          },
+          timestamp: Date.now(),
+          sessionId: 'debug-session',
+          hypothesisId: 'C',
+        }),
+      }).catch(() => {})
     })
     vapiInstance.on('call-start-failed', (e) => {
-      fetch(
-        'http://127.0.0.1:7242/ingest/c421bdd3-c349-4d0f-951d-bc46f02d9190',
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            location: 'start/page.jsx:call-start-failed',
-            message: 'call-start-failed',
-            data: { stage: e?.stage, error: e?.error },
-            timestamp: Date.now(),
-            sessionId: 'debug-session',
-            hypothesisId: 'C',
-          }),
-        },
-      ).catch(() => {})
+      fetch(`http://127.0.0.1:7242/ingest/${interview_id}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          location: 'start/page.jsx:call-start-failed',
+          message: 'call-start-failed',
+          data: { stage: e?.stage, error: e?.error },
+          timestamp: Date.now(),
+          sessionId: 'debug-session',
+          hypothesisId: 'C',
+        }),
+      }).catch(() => {})
     })
     // #endregion
     vapiInstance.on('call-start', () => {
       console.log('Call has started')
       setIsCallActive(true)
-      // setTrackingStatus('active') - DISABLED
-
-      // Start tracking when call begins - DISABLED
-      // if (trackingService) {
-      //   trackingService.startTracking()
-
-      //   // Start focus metrics updates
-      //   trackingIntervalRef.current = setInterval(() => {
-      //     const metrics = trackingService.getFocusMetrics()
-      //     setFocusMetrics(metrics)
-      //   }, 5000)
-      // }
 
       toast.success('Interview started successfully!')
     })
@@ -403,20 +457,18 @@ function StartInterview() {
 
     vapiInstance.on('message', (message) => {
       if (message.role === 'assistant') {
-        setCurrentQuestion((prev) => Math.min(prev + 1, totalQuestions))
-        setInterviewProgress((currentQuestion / totalQuestions) * 100)
-
-        // Record the question for tracking - DISABLED
-        // if (trackingService) {
-        //   trackingService.setCurrentQuestion(message.content)
-        // }
+        setCurrentQuestion((prev) => {
+          const newQuestionCount = Math.min(prev + 1, totalQuestions)
+          setInterviewProgress((newQuestionCount / totalQuestions) * 100)
+          return newQuestionCount
+        })
       }
     })
   }
 
   const startCall = async () => {
     // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/c421bdd3-c349-4d0f-951d-bc46f02d9190', {
+    fetch(`http://127.0.0.1:7242/ingest/${interview_id}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -440,21 +492,18 @@ function StartInterview() {
 
     try {
       // #region agent log
-      fetch(
-        'http://127.0.0.1:7242/ingest/c421bdd3-c349-4d0f-951d-bc46f02d9190',
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            location: 'start/page.jsx:before vapi.start',
-            message: 'before vapi.start',
-            data: {},
-            timestamp: Date.now(),
-            sessionId: 'debug-session',
-            hypothesisId: 'C',
-          }),
-        },
-      ).catch(() => {})
+      fetch(`http://127.0.0.1:7242/ingest/${interview_id}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          location: 'start/page.jsx:before vapi.start',
+          message: 'before vapi.start',
+          data: {},
+          timestamp: Date.now(),
+          sessionId: 'debug-session',
+          hypothesisId: 'C',
+        }),
+      }).catch(() => {})
       // #endregion
       const questionList = interviewInfo?.interviewData?.questionList
         ?.map((item) => item?.question)
@@ -467,7 +516,7 @@ function StartInterview() {
 
       console.log('Starting Vapi call with:', {
         userName: interviewInfo?.userName,
-        jobPosition: interviewInfo?.interviewData.jobPosition,
+        jobPosition: interviewInfo?.interviewData.job_position,
         questionsCount: interviewInfo?.interviewData?.questionList?.length,
       })
 
@@ -516,39 +565,33 @@ Keep responses concise and natural. Focus on making the candidate comfortable wh
       console.log('Calling vapi.start() with assistant options')
       vapi.start(assistantOptions)
       // #region agent log
-      fetch(
-        'http://127.0.0.1:7242/ingest/c421bdd3-c349-4d0f-951d-bc46f02d9190',
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            location: 'start/page.jsx:after vapi.start called',
-            message: 'vapi.start() invoked',
-            data: {},
-            timestamp: Date.now(),
-            sessionId: 'debug-session',
-            hypothesisId: 'C',
-          }),
-        },
-      ).catch(() => {})
+      fetch(`http://127.0.0.1:7242/ingest/${interview_id}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          location: 'start/page.jsx:after vapi.start called',
+          message: 'vapi.start() invoked',
+          data: {},
+          timestamp: Date.now(),
+          sessionId: 'debug-session',
+          hypothesisId: 'C',
+        }),
+      }).catch(() => {})
       // #endregion
     } catch (error) {
       // #region agent log
-      fetch(
-        'http://127.0.0.1:7242/ingest/c421bdd3-c349-4d0f-951d-bc46f02d9190',
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            location: 'start/page.jsx:startCall catch',
-            message: 'startCall error',
-            data: { message: error?.message, name: error?.name },
-            timestamp: Date.now(),
-            sessionId: 'debug-session',
-            hypothesisId: 'C',
-          }),
-        },
-      ).catch(() => {})
+      fetch(`http://127.0.0.1:7242/ingest/${interview_id}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          location: 'start/page.jsx:startCall catch',
+          message: 'startCall error',
+          data: { message: error?.message, name: error?.name },
+          timestamp: Date.now(),
+          sessionId: 'debug-session',
+          hypothesisId: 'C',
+        }),
+      }).catch(() => {})
       // #endregion
       console.error('Failed to start call:', {
         message: error.message,
@@ -563,17 +606,6 @@ Keep responses concise and natural. Focus on making the candidate comfortable wh
     if (vapi) {
       vapi.stop()
       setIsCallActive(false)
-      // setTrackingStatus('completed') - DISABLED
-
-      // Stop tracking and calculate final score - DISABLED
-      // if (trackingService) {
-      //   trackingService.stopTracking()
-      //   calculateFinalScore()
-      // }
-
-      // if (trackingIntervalRef.current) {
-      //   clearInterval(trackingIntervalRef.current)
-      // }
     }
   }
 
@@ -609,32 +641,6 @@ Keep responses concise and natural. Focus on making the candidate comfortable wh
       }
     }
   }
-
-  // Calculate final score using tracking service - DISABLED
-  // const calculateFinalScore = async () => {
-  //   if (!trackingService) return
-
-  //   try {
-  //     const scoreResult = await trackingService.calculateFinalScore()
-
-  //     toast.success(
-  //       `Interview completed! Final Score: ${Math.round(
-  //         scoreResult.finalScore * 100,
-  //       )}%`,
-  //     )
-
-  //     // Store scores for display
-  //     setAnswerScores({
-  //       focusScore: scoreResult.focusScore,
-  //       answerScore: scoreResult.answerScore,
-  //       finalScore: scoreResult.finalScore,
-  //       breakdown: scoreResult.breakdown,
-  //     })
-  //   } catch (error) {
-  //     console.error('Failed to calculate final score:', error)
-  //     toast.error('Failed to calculate interview score')
-  //   }
-  // }
 
   const formatTime = (seconds) => {
     const hrs = Math.floor(seconds / 3600)
@@ -709,6 +715,24 @@ Keep responses concise and natural. Focus on making the candidate comfortable wh
                 {formatTime(callDuration)}
               </span>
             </div>
+
+            {trackingStatus !== 'inactive' && (
+              <div
+                className={`flex items-center gap-2 px-4 py-2 rounded-full ${
+                  focusMetrics.tabSwitches.uiSwitchCount >= maxTabSwitches
+                    ? 'bg-red-100 text-red-700'
+                    : focusMetrics.tabSwitches.uiSwitchCount > 0
+                      ? 'bg-yellow-100 text-yellow-700'
+                      : 'bg-green-100 text-green-700'
+                }`}
+              >
+                <Monitor className='h-4 w-4' />
+                <span className='font-semibold text-sm'>
+                  Tabs: {focusMetrics.tabSwitches.uiSwitchCount}/
+                  {maxTabSwitches}
+                </span>
+              </div>
+            )}
 
             {isCallActive && (
               <div className='flex items-center gap-2'>
@@ -843,8 +867,8 @@ Keep responses concise and natural. Focus on making the candidate comfortable wh
           </div>
         </div>
 
-        {/* Focus Metrics Display - DISABLED */}
-        {false && trackingStatus !== 'inactive' && (
+        {/* Focus Metrics Display */}
+        {trackingStatus !== 'inactive' && (
           <div className='grid grid-cols-1 md:grid-cols-3 gap-4 mb-6'>
             <div className='text-center p-4 bg-blue-50 rounded-xl'>
               <div className='flex items-center justify-center gap-2 mb-2'>
@@ -873,8 +897,11 @@ Keep responses concise and natural. Focus on making the candidate comfortable wh
               <div className='text-2xl font-bold text-purple-600'>
                 {focusMetrics.tabSwitches.focusScore || 100}
               </div>
-              <div className='text-xs text-purple-600'>
-                {focusMetrics.tabSwitches.count} switches
+              <div
+                className={`text-xs ${focusMetrics.tabSwitches.uiSwitchCount >= maxTabSwitches ? 'text-red-600 font-semibold' : 'text-purple-600'}`}
+              >
+                {focusMetrics.tabSwitches.uiSwitchCount}/{maxTabSwitches}{' '}
+                switches
               </div>
             </div>
 
@@ -1032,7 +1059,13 @@ Keep responses concise and natural. Focus on making the candidate comfortable wh
                 <li>• Stay calm and confident throughout</li>
                 <li>• Ensure good lighting and camera positioning</li>
                 <li>• Look directly at the camera when speaking</li>
-                <li>• Stay focused on the interview - avoid tab switching</li>
+                <li>
+                  •{' '}
+                  <strong>
+                    Stay focused on the interview - avoid tab switching (max 5
+                    allowed)
+                  </strong>
+                </li>
               </ul>
             </div>
           </div>
