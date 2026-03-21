@@ -1,18 +1,22 @@
 This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
 
-## Getting Started 
+## Getting Started
 
 First, run the development server:
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
+git clone https://github.com/Team-Aquarius-00/major_project.git
+```
+
+```bash
+cd major_project
+npm install
+npm run build
+npm run start
+
+```
+
+Make .env file and .env.local in the root directory.
 
 Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
 
