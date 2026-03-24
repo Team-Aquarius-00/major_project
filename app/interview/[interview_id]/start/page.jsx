@@ -35,6 +35,8 @@ import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import InterviewTrackingService from '@/services/interviewTrackingService'
 import InterviewFeedback from './_components/InterviewFeedback'
+import { useInterviewAlerts } from '@/hooks/useInterviewAlerts'
+import { InterviewAlerts } from '@/components/InterviewAlerts'
 
 function StartInterview() {
   const { interviewInfo, setInterviewInfo } = useContext(InterviewDataContext)
@@ -76,6 +78,12 @@ function StartInterview() {
   const [currentAnswer, setCurrentAnswer] = useState('')
   const [showFeedback, setShowFeedback] = useState(false)
 
+  // Interview Alerts (Real-time monitoring)
+  const { alerts, isConnected } = useInterviewAlerts(
+    String(interview_id),
+    isCallActive,
+  )
+
   const durationRef = useRef(null)
   const progressRef = useRef(null)
   const videoRef = useRef(null)
@@ -98,6 +106,32 @@ function StartInterview() {
       }
     }
   }, [interviewInfo])
+
+  // Manage real-time tracking updates to database
+  useEffect(() => {
+    if (!isCallActive || !alerts || alerts.length === 0) return
+
+    // Send tracking updates to database every 10 seconds
+    const trackingInterval = setInterval(async () => {
+      try {
+        const currentMetrics = trackingService?.getFocusMetrics()
+        await fetch(`/api/interview/${interview_id}/tracking`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            timestamp: new Date().toISOString(),
+            alerts: alerts,
+            metrics: currentMetrics,
+            duration: callDuration,
+          }),
+        }).catch((e) => console.debug('Tracking update skipped:', e.message))
+      } catch (error) {
+        console.debug('Failed to send tracking update:', error)
+      }
+    }, 10000)
+
+    return () => clearInterval(trackingInterval)
+  }, [isCallActive, alerts, callDuration, interview_id, trackingService])
 
   // Manage tracking when call status changes
   useEffect(() => {
@@ -431,18 +465,83 @@ function StartInterview() {
       }).catch(() => {})
     })
     // #endregion
-    vapiInstance.on('call-start', () => {
+    vapiInstance.on('call-start', async () => {
       console.log('Call has started')
       setIsCallActive(true)
 
       toast.success('Interview started successfully!')
+
+      // Notify backend that interview session has started
+      try {
+        await fetch('/api/interview/session/start', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            interview_id: interview_id,
+            candidate_name: interviewInfo?.userName,
+            job_position: interviewInfo?.interviewData?.job_position,
+            start_time: new Date().toISOString(),
+          }),
+        })
+        console.log('Session start notified to backend')
+      } catch (error) {
+        console.error('Failed to notify backend of session start:', error)
+      }
     })
 
-    vapiInstance.on('call-end', () => {
+    vapiInstance.on('call-end', async () => {
       console.log('Call has ended')
       setIsCallActive(false)
 
       toast.info('Interview session ended')
+
+      // Stop tracking service and get final metrics
+      if (trackingService) {
+        trackingService.stopTracking()
+        const finalMetrics = trackingService.getFocusMetrics()
+
+        // Save interview results with final metrics and alerts
+        try {
+          const response = await fetch(
+            `/api/interview/${interview_id}/results`,
+            {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                duration: callDuration,
+                completed: true,
+                feedback: {
+                  tab_switches: finalMetrics.tabSwitches.uiSwitchCount,
+                  gaze_alerts: finalMetrics.eyeMovement.distractions,
+                  focus_score: finalMetrics.tabSwitches.focusScore,
+                },
+                scoring: {
+                  questions_answered: currentQuestion,
+                  total_questions: totalQuestions,
+                  time_per_question: callDuration / currentQuestion,
+                },
+                tracking: {
+                  final_metrics: finalMetrics,
+                  alerts: alerts,
+                },
+              }),
+            },
+          )
+
+          if (response.ok) {
+            console.log('Interview results saved successfully')
+            setShowFeedback(true)
+          } else {
+            console.error(
+              'Failed to save interview results:',
+              response.statusText,
+            )
+          }
+        } catch (error) {
+          console.error('Error saving interview results:', error)
+          toast.error('Failed to save interview results')
+        }
+      }
     })
 
     vapiInstance.on('speech-start', () => {
@@ -743,6 +842,18 @@ Keep responses concise and natural. Focus on making the candidate comfortable wh
           </div>
         </div>
       </div>
+
+      {/* Real-time Alerts Section */}
+      {isCallActive && (
+        <div className='bg-white border-b border-gray-200 px-6 py-4'>
+          <div className='max-w-7xl mx-auto'>
+            <InterviewAlerts
+              alerts={alerts}
+              interviewId={String(interview_id)}
+            />
+          </div>
+        </div>
+      )}
 
       {/* Main Content */}
       <div className='max-w-7xl mx-auto px-6 py-8'>

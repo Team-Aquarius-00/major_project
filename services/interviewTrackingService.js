@@ -103,7 +103,7 @@ class InterviewTrackingService {
 
     // Simulate confidence (higher when closer to center)
     const distanceFromCenter = Math.sqrt(
-      Math.pow(gazeX - centerX, 2) + Math.pow(gazeY - centerY, 2)
+      Math.pow(gazeX - centerX, 2) + Math.pow(gazeY - centerY, 2),
     )
     const confidence = Math.max(0.3, 1 - distanceFromCenter / 500)
 
@@ -128,35 +128,50 @@ class InterviewTrackingService {
       eyeData.gazeY >= 0 &&
       eyeData.gazeY <= eyeData.screenHeight
 
+    // Determine gaze direction
+    let gazeDirection = 'center'
+    const normalizedX = eyeData.gazeX / eyeData.screenWidth
+    const normalizedY = eyeData.gazeY / eyeData.screenHeight
+
+    if (normalizedX < 0.35) gazeDirection = 'left'
+    else if (normalizedX > 0.65) gazeDirection = 'right'
+    else if (normalizedY < 0.35) gazeDirection = 'up'
+    else if (normalizedY > 0.65) gazeDirection = 'down'
+
     const processedData = {
       isOnScreen,
+      gazeDirection,
       confidence: eyeData.confidence,
       distanceFromCenter: Math.sqrt(
         Math.pow(eyeData.gazeX - eyeData.screenWidth / 2, 2) +
-          Math.pow(eyeData.gazeY - eyeData.screenHeight / 2, 2)
+          Math.pow(eyeData.gazeY - eyeData.screenHeight / 2, 2),
       ),
     }
 
     this.updateFocusMetrics(processedData)
 
     try {
-      const response = await fetch('/api/eye-tracking', {
+      // Send to Next.js API which forwards to FastAPI backend
+      const response = await fetch('/api/gaze', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          interviewId: this.interviewId,
-          candidateId: this.candidateId,
-          eyeData,
-          processedData,
+          interview_id: this.interviewId,
+          candidate_id: this.candidateId,
+          gaze_x: normalizedX,
+          gaze_y: normalizedY,
+          gaze_direction: gazeDirection,
+          confidence: eyeData.confidence,
+          is_looking_at_screen: isOnScreen,
           timestamp: new Date().toISOString(),
         }),
       })
 
       if (response.ok) {
         const result = await response.json()
-        this.updateFocusMetrics(result.processedData)
+        this.updateFocusMetrics(result.backend_response?.data || processedData)
       }
     } catch (error) {
       console.error('Failed to track eye movement:', error)
@@ -244,7 +259,7 @@ class InterviewTrackingService {
         this.focusMetrics.tabSwitches.totalTimeAway += timeSpent
         this.focusMetrics.tabSwitches.isCurrentlyAway = false
         console.log(
-          `User returned to interview after ${timeSpent}ms, total switches: ${this.focusMetrics.tabSwitches.count}`
+          `User returned to interview after ${timeSpent}ms, total switches: ${this.focusMetrics.tabSwitches.count}`,
         )
       }
       this.focusMetrics.tabSwitches.lastSwitchTime = now
@@ -259,22 +274,26 @@ class InterviewTrackingService {
     }
 
     try {
-      const response = await fetch('/api/tab-monitoring', {
+      // Send to FastAPI backend via Next.js API
+      const response = await fetch('/api/gaze', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          interviewId: this.interviewId,
-          candidateId: this.candidateId,
-          tabData,
+          interview_id: this.interviewId,
+          candidate_id: this.candidateId,
+          tab_title: document.title,
+          tab_url: window.location.href,
+          time_spent: timeSpent,
+          event_type: eventType,
           timestamp: new Date().toISOString(),
         }),
       })
 
       if (response.ok) {
         const result = await response.json()
-        this.updateTabMetrics(result.processedData)
+        this.updateTabMetrics(result.backend_response?.data || tabData)
         console.log('Tab switch data sent to API successfully')
       }
     } catch (error) {
@@ -297,17 +316,17 @@ class InterviewTrackingService {
             totalTime - this.focusMetrics.tabSwitches.totalTimeAway
           this.focusMetrics.screenFocus.percentage = Math.max(
             0,
-            (focusTime / totalTime) * 100
+            (focusTime / totalTime) * 100,
           )
 
           console.log(
             `Focus update - Total time: ${Math.round(
-              totalTime / 1000
+              totalTime / 1000,
             )}s, Time away: ${Math.round(
-              this.focusMetrics.tabSwitches.totalTimeAway / 1000
+              this.focusMetrics.tabSwitches.totalTimeAway / 1000,
             )}s, Focus: ${Math.round(
-              this.focusMetrics.screenFocus.percentage
-            )}%`
+              this.focusMetrics.screenFocus.percentage,
+            )}%`,
           )
         } catch (error) {
           console.error('Error updating focus metrics:', error)
@@ -401,11 +420,11 @@ class InterviewTrackingService {
     // Calculate focus score based on tab switches and time away
     const tabSwitchScore = Math.max(
       0,
-      100 - this.focusMetrics.tabSwitches.count * 10
+      100 - this.focusMetrics.tabSwitches.count * 10,
     )
     const timeAwayScore = Math.max(
       0,
-      100 - (this.focusMetrics.tabSwitches.totalTimeAway / 1000) * 2
+      100 - (this.focusMetrics.tabSwitches.totalTimeAway / 1000) * 2,
     )
     const overallFocusScore = Math.round((tabSwitchScore + timeAwayScore) / 2)
 
