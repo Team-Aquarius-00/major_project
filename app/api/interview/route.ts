@@ -22,14 +22,14 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Fetch user to get userId
-    let user_id: number | null = null
+    // Fetch admin by email to get admin_id
+    let admin_id: number | null = null
     if (userEmail) {
-      const user = await prisma.users.findUnique({
+      const admin = await prisma.admin.findUnique({
         where: { email: userEmail },
         select: { id: true },
       })
-      user_id = user?.id || null
+      admin_id = admin?.id || null
     }
 
     const interview = await prisma.interview.create({
@@ -40,8 +40,7 @@ export async function POST(request: NextRequest) {
         duration,
         type,
         questionList,
-        userEmail,
-        user_id,
+        admin_id,
       },
     })
 
@@ -77,11 +76,12 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ success: true, data: interview })
     }
 
-    // Fetch interviews filtered by userEmail if provided
+    // Fetch interviews filtered by admin email if provided
     const interviews = await prisma.interview.findMany({
-      where: userEmail ? { userEmail } : {},
+      where: userEmail ? { admin: { email: userEmail } } : {},
       select: {
         id: true,
+        interview_id: true,
         job_position: true,
         type: true,
         created_at: true,

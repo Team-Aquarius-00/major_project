@@ -10,3 +10,7 @@ SERVER_PORT = int(os.getenv("SERVER_PORT", 8000))
 DEBUG = os.getenv("DEBUG", "True").lower() == "true"
 YOLOV8_MODEL = os.getenv("YOLOV8_MODEL", "yolov8n.pt")
 GAZE_DETECTION_ENABLED = os.getenv("GAZE_DETECTION_ENABLED", "True").lower() == "true"
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+
+if not OPENAI_API_KEY:
+    raise ValueError("OPENAI_API_KEY environment variable is required for STT/TTS functionality")

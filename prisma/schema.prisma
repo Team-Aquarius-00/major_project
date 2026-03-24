@@ -8,26 +8,62 @@ datasource db {
 }
 
 model Interview {
-  id              Int       @id @default(autoincrement())
-  interview_id    String    @unique
-  job_position    String?
-  job_description String?
-  duration        String?
-  questionList    Json?
-  userEmail       String?
-  completed       Boolean?
-  created_at      DateTime? @default(now()) @db.Timestamptz(6)
-  feedback        Json?
-  scoring         Json?
-  tracking        Json?
-  type            String[]
-  user_id         Int?
+  id                  Int                   @id @default(autoincrement())
+  interview_id        String                @unique
+  job_position        String?
+  job_description     String?
+  duration            String?
+  questionList        Json?
+  completed           Boolean?
+  created_at          DateTime?             @default(now()) @db.Timestamptz(6)
+  feedback            Json?
+  scoring             Json?
+  tracking            Json?
+  type                String[]
+  admin_id            Int?                  // Admin who created this interview (optional for backward compatibility)
+  admin               Admin?                @relation(fields: [admin_id], references: [id], onDelete: SetNull)
+  // Relationships
+  candidates          InterviewCandidate[]
+  @@index([admin_id])
 }
 
-model Users {
-  id         Int       @id(map: "users_pkey") @default(autoincrement())
-  name       String?
-  email      String?   @unique(map: "users_email_key")
-  picture    String?
-  created_at DateTime? @default(now()) @db.Timestamp(6)
+model Admin {
+  id              Int         @id @default(autoincrement())
+  name            String?
+  email           String?     @unique
+  picture         String?
+  created_at      DateTime?   @default(now()) @db.Timestamp(6)
+  // Relationships
+  interviews      Interview[]
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+}
+
+// Candidate users taking interviews
+model InterviewCandidate {
+  id                    Int       @id @default(autoincrement())
+  interview_id          Int       // Reference to Interview template
+  interview             Interview @relation(fields: [interview_id], references: [id], onDelete: Cascade)
+  // Candidate details
+  name                  String
+  email                 String
+  phone                 String?
+  // Interview results & scores
+  final_score           Float?    @default(0)
+  answer_quality_score  Float?    @default(0)
+  tracking_score        Float?    @default(0)
+  // Detailed results
+  answers               Json?     // Array of candidate's answers
+  evaluation            Json?     // Evaluation scores for each answer
+  feedback              Json?     // Feedback including tab switches, gaze alerts
+  scoring               Json?     // Detailed scoring breakdown
+  tracking              Json?     // Gaze tracking, object detection, tab monitoring data
+  duration              Int?      // Interview duration in seconds
+  status                String    @default("pending") // pending, completed, in_progress
+  // Timestamps
+  created_at            DateTime  @default(now())
+  completed_at          DateTime?
+  @@unique([interview_id, email]) // Ensure one candidate per interview per email
+  @@index([interview_id])
+  @@index([email])
 }

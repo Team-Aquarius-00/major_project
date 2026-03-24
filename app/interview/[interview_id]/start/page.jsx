@@ -29,7 +29,7 @@ import {
   FileText,
 } from 'lucide-react'
 import Image from 'next/image'
-import Vapi from '@vapi-ai/web'
+// Removed Vapi import - using backend speech APIs instead
 import AlertConfirmation from './_components/AlertConfirmation'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
@@ -37,12 +37,18 @@ import InterviewTrackingService from '@/services/interviewTrackingService'
 import InterviewFeedback from './_components/InterviewFeedback'
 import { useInterviewAlerts } from '@/hooks/useInterviewAlerts'
 import { InterviewAlerts } from '@/components/InterviewAlerts'
+import { useAudioRecording } from '@/hooks/useAudioRecording'
 
 function StartInterview() {
   const { interviewInfo, setInterviewInfo } = useContext(InterviewDataContext)
   const { interview_id } = useParams()
   const router = useRouter()
-  const [vapi, setVapi] = useState(null)
+
+  // Audio recording hook for STT/TTS
+  const audio = useAudioRecording(
+    process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000',
+  )
+
   const [isCallActive, setIsCallActive] = useState(false)
   const [isMuted, setIsMuted] = useState(false)
   const [isSpeakerOn, setIsSpeakerOn] = useState(true)
@@ -54,6 +60,12 @@ function StartInterview() {
   const [interviewProgress, setInterviewProgress] = useState(0)
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState(null)
+  const [answers, setAnswers] = useState([]) // Stores STT-captured answers
+  const [answerScores, setAnswerScores] = useState({}) // Evaluation scores for each answer
+  const [currentQuestionData, setCurrentQuestionData] = useState(null) // Current question object
+  const [dbQuestions, setDbQuestions] = useState([]) // Store fetched questions
+  const [isRecordingAnswer, setIsRecordingAnswer] = useState(false)
+  const [isPlayingQuestion, setIsPlayingQuestion] = useState(false)
 
   // Video states
   const [isVideoOn, setIsVideoOn] = useState(true)
@@ -95,8 +107,6 @@ function StartInterview() {
       initializeVideo()
       initializeTracking()
     } else {
-      // If user opened the start URL directly (no context), redirect them
-      // back to the interview join page so they can enter their name.
       if (interview_id) {
         router.replace('/interview/' + interview_id)
       } else {
@@ -104,6 +114,10 @@ function StartInterview() {
           'Interview information not found. Please go back and try again.',
         )
       }
+    }
+
+    return () => {
+      audio.cleanup()
     }
   }, [interviewInfo])
 
@@ -337,408 +351,272 @@ function StartInterview() {
     }
   }
 
-  const initializeInterview = () => {
-    // #region agent log
-    const logInit = (message, data, hypothesisId) => {
-      if (!interview_id) return // Safety check
-      fetch(`http://127.0.0.1:7242/ingest/${interview_id}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          location: 'start/page.jsx:initializeInterview',
-          message,
-          data: data || {},
-          timestamp: Date.now(),
-          sessionId: 'debug-session',
-          hypothesisId,
-        }),
-      }).catch((err) => {
-        console.warn('Failed to send log:', err)
-      })
-    }
-    // #endregion
-
+  const initializeInterview = async () => {
+    // Initialize audio recording with backend speech APIs
     if (!interview_id) {
       setError('Invalid interview session. Please start over.')
       return
     }
 
     try {
-      const apiKey = process.env.NEXT_PUBLIC_VAPI_PUBLIC_KEY
-
-      // #region agent log
-      logInit(
-        'apiKey checked',
-        { apiKeyExists: !!apiKey, apiKeyLength: (apiKey || '').length },
-        'A',
-      )
-      // #endregion
-
-      // Debug logging
-      console.log('Vapi initialization:', {
-        apiKeyExists: !!apiKey,
-        apiKeyLength: apiKey?.length || 0,
-      })
-
-      if (!apiKey) {
-        setError(
-          'Vapi API key is missing. Please check your environment variables.',
-        )
+      const audioInitialized = await audio.initializeAudio()
+      if (!audioInitialized) {
+        setError(audio.audioError || 'Failed to initialize microphone')
         return
       }
 
-      const vapiInstance = new Vapi(apiKey)
-
-      // #region agent log
-      logInit('Vapi instance created', { hasInstance: !!vapiInstance }, 'D')
-      // #endregion
-
-      // Test connection
-      console.log('Vapi instance created:', vapiInstance)
-      setVapi(vapiInstance)
-
-      // Set up event listeners
-      setupVapiEventListeners(vapiInstance)
-
-      // #region agent log
-      logInit('setupVapiEventListeners completed', {}, 'D')
-      // #endregion
-
-      // Calculate total questions
-      const questions = interviewInfo?.interviewData?.questionList || []
-      setTotalQuestions(questions.length)
-
-      console.log('Interview initialized successfully')
+      console.log('Interview initialized successfully with backend speech APIs')
     } catch (err) {
-      // #region agent log
-      logInit(
-        'initializeInterview catch',
-        { message: err?.message, name: err?.name },
-        'A',
-      )
-      // #endregion
-      console.error('Vapi initialization error:', {
+      console.error('Initialization error:', {
         message: err.message,
         stack: err.stack,
         error: err,
       })
       setError(
-        `Failed to initialize Vapi: ${
-          err.message || 'Unknown error'
-        }. Please refresh the page.`,
+        `Failed to initialize interview: ${err.message}. Please refresh the page.`,
       )
     }
   }
 
-  const setupVapiEventListeners = (vapiInstance) => {
-    // #region agent log
-    vapiInstance.on('error', (e) => {
-      fetch(`http://127.0.0.1:7242/ingest/${interview_id}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          location: 'start/page.jsx:vapi-error',
-          message: 'vapi error event',
-          data: {
-            type: e?.type,
-            stage: e?.stage,
-            error: String(e?.error ?? e),
-          },
-          timestamp: Date.now(),
-          sessionId: 'debug-session',
-          hypothesisId: 'C',
-        }),
-      }).catch(() => {})
-    })
-    vapiInstance.on('call-start-failed', (e) => {
-      fetch(`http://127.0.0.1:7242/ingest/${interview_id}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          location: 'start/page.jsx:call-start-failed',
-          message: 'call-start-failed',
-          data: { stage: e?.stage, error: e?.error },
-          timestamp: Date.now(),
-          sessionId: 'debug-session',
-          hypothesisId: 'C',
-        }),
-      }).catch(() => {})
-    })
-    // #endregion
-    vapiInstance.on('call-start', async () => {
-      console.log('Call has started')
-      setIsCallActive(true)
+  const completeInterview = async () => {
+    // Called when interview is finished - evaluates and saves results
+    console.log('Completing interview...')
+    toast.info('Interview session ended - Evaluating answers...')
 
-      toast.success('Interview started successfully!')
+    try {
+      // Stop tracking service and get final metrics
+      let finalMetrics = {}
+      if (trackingService) {
+        trackingService.stopTracking()
+        finalMetrics = trackingService.getFocusMetrics()
+      }
 
-      // Notify backend that interview session has started
-      try {
-        await fetch('/api/interview/session/start', {
+      // Step 1: Evaluate all answers using LLM
+      console.log('Evaluating answers:', answers)
+      const evaluationResponse = await fetch(
+        '/api/interview/evaluate-answers',
+        {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            interview_id: interview_id,
-            candidate_name: interviewInfo?.userName,
+            interview_id,
+            questions: dbQuestions,
+            answers: answers,
             job_position: interviewInfo?.interviewData?.job_position,
-            start_time: new Date().toISOString(),
           }),
-        })
-        console.log('Session start notified to backend')
-      } catch (error) {
-        console.error('Failed to notify backend of session start:', error)
+        },
+      )
+
+      if (!evaluationResponse.ok) {
+        throw new Error('Failed to evaluate answers')
       }
-    })
 
-    vapiInstance.on('call-end', async () => {
-      console.log('Call has ended')
-      setIsCallActive(false)
+      const evaluationResult = await evaluationResponse.json()
+      const answerScoresData = evaluationResult.scores || {}
+      const overallAnswerScore = evaluationResult.overall_score || 0
 
-      toast.info('Interview session ended')
+      // Step 2: Calculate composite scores from tracking
+      const eyeFocusScore = Math.round(
+        (1 - (finalMetrics?.eyeMovement?.distractionRate || 0)) * 100,
+      )
+      const tabFocusScore = finalMetrics?.tabSwitches?.focusScore || 100
+      const screenFocusScore = finalMetrics?.screenFocus?.percentage || 100
 
-      // Stop tracking service and get final metrics
-      if (trackingService) {
-        trackingService.stopTracking()
-        const finalMetrics = trackingService.getFocusMetrics()
+      // Step 3: Calculate weighted final score
+      const finalScore = Math.round(
+        overallAnswerScore * 0.5 +
+          tabFocusScore * 0.2 +
+          eyeFocusScore * 0.15 +
+          screenFocusScore * 0.15,
+      )
 
-        // Save interview results with final metrics and alerts
-        try {
-          const response = await fetch(
-            `/api/interview/${interview_id}/results`,
-            {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                duration: callDuration,
-                completed: true,
-                feedback: {
-                  tab_switches: finalMetrics.tabSwitches.uiSwitchCount,
-                  gaze_alerts: finalMetrics.eyeMovement.distractions,
-                  focus_score: finalMetrics.tabSwitches.focusScore,
-                },
-                scoring: {
-                  questions_answered: currentQuestion,
-                  total_questions: totalQuestions,
-                  time_per_question: callDuration / currentQuestion,
-                },
-                tracking: {
-                  final_metrics: finalMetrics,
-                  alerts: alerts,
-                },
-              }),
-            },
-          )
+      // Step 4: Save results
+      const saveResponse = await fetch('/api/interview-candidate/results', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          interview_id: String(interview_id),
+          email: interviewInfo?.userEmail || 'candidate@unknown.com',
+          duration: callDuration,
+          final_score: finalScore,
+          answer_quality_score: overallAnswerScore,
+          tracking_score: Math.round(
+            (tabFocusScore + eyeFocusScore + screenFocusScore) / 3,
+          ),
+          answers: answers,
+          evaluation: { answer_scores: answerScoresData },
+          feedback: {
+            tab_switches: finalMetrics?.tabSwitches?.uiSwitchCount || 0,
+            gaze_alerts: finalMetrics?.eyeMovement?.distractions || 0,
+          },
+          scoring: { answer_quality_score: overallAnswerScore },
+          tracking: { final_metrics: finalMetrics },
+        }),
+      })
 
-          if (response.ok) {
-            console.log('Interview results saved successfully')
-            setShowFeedback(true)
-          } else {
-            console.error(
-              'Failed to save interview results:',
-              response.statusText,
-            )
-          }
-        } catch (error) {
-          console.error('Error saving interview results:', error)
-          toast.error('Failed to save interview results')
-        }
+      if (saveResponse.ok) {
+        toast.success(`Interview completed! Your score: ${finalScore}/100`)
+        setShowFeedback(true)
+      } else {
+        toast.error('Failed to save interview results')
       }
-    })
-
-    vapiInstance.on('speech-start', () => {
-      console.log('AI speech has started')
-      setActiveUser(false)
-    })
-
-    vapiInstance.on('speech-end', () => {
-      console.log('AI speech has ended')
-      setActiveUser(true)
-    })
-
-    vapiInstance.on('message', (message) => {
-      if (message.role === 'assistant') {
-        setCurrentQuestion((prev) => {
-          const newQuestionCount = Math.min(prev + 1, totalQuestions)
-          setInterviewProgress((newQuestionCount / totalQuestions) * 100)
-          return newQuestionCount
-        })
-      }
-    })
+    } catch (error) {
+      console.error('Error processing interview results:', error)
+      toast.error('Error processing results: ' + error.message)
+    }
   }
 
   const startCall = async () => {
-    // #region agent log
-    fetch(`http://127.0.0.1:7242/ingest/${interview_id}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        location: 'start/page.jsx:startCall entry',
-        message: 'startCall entry',
-        data: { vapiExists: !!vapi, interviewInfoExists: !!interviewInfo },
-        timestamp: Date.now(),
-        sessionId: 'debug-session',
-        hypothesisId: 'B',
-      }),
-    }).catch(() => {})
-    // #endregion
-    if (!vapi || !interviewInfo) {
-      console.error('Cannot start call:', {
-        vapiExists: !!vapi,
-        infoExists: !!interviewInfo,
-      })
-      toast.error('Vapi not initialized. Please refresh the page.')
+    if (!interviewInfo) {
+      toast.error('Interview information is not available. Please refresh.')
       return
     }
 
     try {
-      // #region agent log
-      fetch(`http://127.0.0.1:7242/ingest/${interview_id}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          location: 'start/page.jsx:before vapi.start',
-          message: 'before vapi.start',
-          data: {},
-          timestamp: Date.now(),
-          sessionId: 'debug-session',
-          hypothesisId: 'C',
-        }),
-      }).catch(() => {})
-      // #endregion
-      const questionList = interviewInfo?.interviewData?.questionList
-        ?.map((item) => item?.question)
-        .join(', ')
+      setIsLoading(true)
 
-      if (!questionList) {
-        toast.error('No questions found for this interview')
-        return
+      // Register candidate
+      try {
+        await fetch('/api/interview-candidate/register', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            interview_id: String(interview_id),
+            name: interviewInfo?.userName,
+            email: interviewInfo?.userEmail || 'candidate@unknown.com',
+            phone: interviewInfo?.phone,
+          }),
+        })
+      } catch (error) {
+        console.warn('Candidate registration failed:', error)
       }
 
-      console.log('Starting Vapi call with:', {
-        userName: interviewInfo?.userName,
-        jobPosition: interviewInfo?.interviewData.job_position,
-        questionsCount: interviewInfo?.interviewData?.questionList?.length,
-      })
+      // Fetch questions from database
+      const response = await fetch(`/api/interview/${interview_id}`)
+      const result = await response.json()
 
-      const assistantOptions = {
-        name: 'AI Recruiter',
-        firstMessage: `Hi ${interviewInfo?.userName}, welcome to your ${interviewInfo?.interviewData.jobPosition} interview! I'm excited to chat with you today. Let's begin with a few questions to get to know you better.`,
-        transcriber: {
-          provider: 'deepgram',
-          model: 'nova-2',
-          language: 'en',
-        },
-        voice: {
-          provider: 'playht',
-          voiceId: 'jennifer',
-        },
-        model: {
-          provider: 'openai',
-          model: 'gpt-4',
-          messages: [
-            {
-              role: 'system',
-              content: `
-You are an AI voice assistant conducting a professional interview for the position of ${interviewInfo?.interviewData.jobPosition}. Your role is to:
-
-1. Begin with a warm, professional greeting
-2. Ask one question at a time from this list: ${questionList}
-3. Listen carefully to responses and provide encouraging feedback
-4. If the candidate struggles, offer helpful hints without giving away answers
-5. Keep the conversation natural and engaging
-6. After 5-7 questions, provide a brief summary and end positively
-
-Guidelines:
-- Be friendly but professional
-- Give specific, constructive feedback
-- Offer hints when needed: "That's a good start! Think about..."
-- Encourage elaboration: "Can you tell me more about that?"
-- End with: "Great work today! You've shown strong knowledge in [specific areas]. Good luck with your application!"
-
-Keep responses concise and natural. Focus on making the candidate comfortable while assessing their knowledge.
-`,
-            },
-          ],
-        },
+      if (!result.success || !result.data?.questionList) {
+        throw new Error('Failed to load interview questions')
       }
 
-      console.log('Calling vapi.start() with assistant options')
-      vapi.start(assistantOptions)
-      // #region agent log
-      fetch(`http://127.0.0.1:7242/ingest/${interview_id}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          location: 'start/page.jsx:after vapi.start called',
-          message: 'vapi.start() invoked',
-          data: {},
-          timestamp: Date.now(),
-          sessionId: 'debug-session',
-          hypothesisId: 'C',
-        }),
-      }).catch(() => {})
-      // #endregion
+      const fetchedQuestions = Array.isArray(result.data.questionList)
+        ? result.data.questionList
+        : JSON.parse(result.data.questionList)
+
+      if (fetchedQuestions.length === 0) {
+        throw new Error('No questions found for this interview')
+      }
+
+      setDbQuestions(fetchedQuestions)
+      setTotalQuestions(fetchedQuestions.length)
+      setCurrentQuestionData(fetchedQuestions[0])
+      setIsLoading(false)
+      setIsCallActive(true)
+      toast.success('Interview started! Ready for first question.')
+
+      // Start audio and play first question
+      const audioInitialized = await audio.initializeAudio()
+      if (!audioInitialized) {
+        throw new Error('Could not initialize microphone')
+      }
+
+      // Play welcome message
+      const welcomeMessage = `Hi ${interviewInfo?.userName}, welcome to your ${interviewInfo?.interviewData?.job_position} interview! I will ask you ${fetchedQuestions.length} questions. Please speak clearly and take your time. Let's begin with the first question.`
+      await audio.playTextToSpeech(
+        welcomeMessage,
+        String(interview_id),
+        'alloy',
+      )
+
+      // Start question-answer loop
+      await runInterviewLoop(fetchedQuestions)
     } catch (error) {
-      // #region agent log
-      fetch(`http://127.0.0.1:7242/ingest/${interview_id}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          location: 'start/page.jsx:startCall catch',
-          message: 'startCall error',
-          data: { message: error?.message, name: error?.name },
-          timestamp: Date.now(),
-          sessionId: 'debug-session',
-          hypothesisId: 'C',
-        }),
-      }).catch(() => {})
-      // #endregion
-      console.error('Failed to start call:', {
-        message: error.message,
-        stack: error.stack,
-        error: error,
-      })
+      console.error('Failed to start interview:', error)
       toast.error(`Failed to start interview: ${error.message}`)
-    }
-  }
-
-  const stopInterview = () => {
-    if (vapi) {
-      vapi.stop()
+      setIsLoading(false)
       setIsCallActive(false)
     }
   }
 
-  const toggleMute = () => {
-    if (vapi) {
-      if (isMuted) {
-        vapi.unmute()
-        setIsMuted(false)
-        toast.success('Microphone unmuted')
-      } else {
-        vapi.mute()
-        setIsMuted(true)
-        toast.info('Microphone muted')
+  const runInterviewLoop = async (questions) => {
+    // Interview question-answer loop
+    for (let i = 0; i < questions.length; i++) {
+      if (!isCallActive) break //User stopped interview
+
+      const question = questions[i]
+      setCurrentQuestion(i)
+      setInterviewProgress((i / questions.length) * 100)
+      setCurrentQuestionData(question)
+
+      try {
+        // Play question
+        setIsPlayingQuestion(true)
+        const questionText =
+          typeof question === 'string'
+            ? question
+            : question.question || question.text
+        await audio.playTextToSpeech(
+          questionText,
+          String(interview_id),
+          'alloy',
+        )
+        setIsPlayingQuestion(false)
+
+        // Record and transcribe answer
+        setIsRecordingAnswer(true)
+        const result = await audio.stopRecordingAndTranscribe(
+          String(interview_id),
+        )
+        setIsRecordingAnswer(false)
+
+        if (result.success) {
+          setAnswers((prev) => [...prev, result.text])
+          toast.success(`Question ${i + 1} recorded`)
+
+          // Pause briefly between questions
+          if (i < questions.length - 1) {
+            await new Promise((resolve) => setTimeout(resolve, 1000))
+          }
+        } else {
+          toast.error(`Failed to record answer: ${result.error}`)
+        }
+      } catch (error) {
+        console.error(`Error on question ${i + 1}:`, error)
+        toast.error(`Error processing question ${i + 1}`)
       }
     }
+
+    // Interview complete
+    setIsCallActive(false)
+    await completeInterview()
+  }
+
+  const stopInterview = async () => {
+    setIsCallActive(false)
+    audio.stopAudio()
+    if (trackingService) {
+      trackingService.stopTracking()
+    }
+    toast.info('Interview stopped')
+    await completeInterview()
+  }
+
+  const toggleMute = () => {
+    setIsMuted(!isMuted)
+    toast.info(isMuted ? 'Microphone enabled' : 'Microphone muted')
   }
 
   const toggleSpeaker = () => {
     setIsSpeakerOn(!isSpeakerOn)
-    toast.info(isSpeakerOn ? 'Speaker turned off' : 'Speaker turned on')
+    toast.info(isSpeakerOn ? 'Speaker off' : 'Speaker on')
   }
 
   const togglePause = () => {
-    if (vapi) {
-      if (isPaused) {
-        vapi.resume()
-        setIsPaused(false)
-        toast.success('Interview resumed')
-      } else {
-        vapi.pause()
-        setIsPaused(true)
-        toast.info('Interview paused')
-      }
+    setIsPaused(!isPaused)
+    if (!isPaused) {
+      audio.stopAudio()
     }
+    toast.info(isPaused ? 'Interview resumed' : 'Interview paused')
   }
 
   const formatTime = (seconds) => {
@@ -971,9 +849,9 @@ Keep responses concise and natural. Focus on making the candidate comfortable wh
                 </div>
               )}
 
-              <div className='text-sm text-gray-500'>
+              {/* <div className='text-sm text-gray-500'>
                 Question {currentQuestion} of {totalQuestions}
-              </div>
+              </div> */}
             </div>
           </div>
         </div>
@@ -1036,7 +914,7 @@ Keep responses concise and natural. Focus on making the candidate comfortable wh
         {/* Test Controls for Development - DISABLED */}
 
         {/* Interview Progress */}
-        {isCallActive && (
+        {/* {isCallActive && (
           <div className='mt-8 bg-white rounded-2xl shadow-lg border border-gray-100 p-6'>
             <h3 className='text-lg font-semibold text-gray-900 mb-4 text-center'>
               Interview Progress
@@ -1062,7 +940,7 @@ Keep responses concise and natural. Focus on making the candidate comfortable wh
               </div>
             </div>
           </div>
-        )}
+        )} */}
 
         {/* Control Panel */}
         <div className='mt-8 bg-white rounded-2xl shadow-lg border border-gray-100 p-6'>

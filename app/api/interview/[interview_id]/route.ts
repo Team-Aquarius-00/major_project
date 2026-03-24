@@ -3,17 +3,18 @@ import { prisma } from '@/lib/prisma'
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { interview_id: string } }
+  { params }: { params: Promise<{ interview_id: string }> },
 ) {
+  const { interview_id } = await params
   try {
     const interview = await prisma.interview.findUnique({
-      where: { interview_id: params.interview_id },
+      where: { interview_id: interview_id },
     })
 
     if (!interview) {
       return NextResponse.json(
         { success: false, error: 'Interview not found' },
-        { status: 404 }
+        { status: 404 },
       )
     }
 
@@ -25,17 +26,27 @@ export async function GET(
     console.error('Error fetching interview:', error)
     return NextResponse.json(
       { success: false, error: 'Failed to fetch interview' },
-      { status: 500 }
+      { status: 500 },
     )
   }
 }
 
+interface PatchRequestBody {
+  feedback?: unknown
+  scoring?: unknown
+  tracking?: unknown
+  completed?: unknown
+  job_position?: unknown
+  duration?: unknown
+}
+
 export async function PATCH(
   request: NextRequest,
-  { params }: { params: { interview_id: string } }
+  { params }: { params: Promise<{ interview_id: string }> },
 ) {
+  const { interview_id } = await params
   try {
-    const body = await request.json()
+    const body: PatchRequestBody = await request.json()
     const { feedback, scoring, tracking, completed, job_position, duration } =
       body
 
@@ -49,7 +60,7 @@ export async function PATCH(
     if (duration !== undefined) updateData.duration = duration
 
     const interview = await prisma.interview.update({
-      where: { interview_id: params.interview_id },
+      where: { interview_id: interview_id },
       data: updateData,
     })
 
@@ -62,7 +73,7 @@ export async function PATCH(
     console.error('Error updating interview:', error)
     return NextResponse.json(
       { success: false, error: 'Failed to update interview' },
-      { status: 500 }
+      { status: 500 },
     )
   }
 }

@@ -2,7 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from app.config import FRONTEND_URL, DEBUG
-from app.routes import websocket_routes, monitoring_routes, interview_routes
+from app.routes import websocket_routes, monitoring_routes, interview_routes, speech_routes
 
 # Initialize FastAPI app
 app = FastAPI(
@@ -34,6 +34,7 @@ app.add_middleware(
 app.include_router(websocket_routes.router)
 app.include_router(monitoring_routes.router)
 app.include_router(interview_routes.router)
+app.include_router(speech_routes.router)
 
 
 @app.get("/")
