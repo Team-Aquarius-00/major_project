@@ -14,13 +14,9 @@ interface Alert {
 
 interface InterviewAlertsProps {
   alerts: Alert[]
-  interviewId: string
 }
 
-export function InterviewAlerts({
-  alerts,
-  interviewId: _interviewId,
-}: InterviewAlertsProps) {
+export function InterviewAlerts({ alerts }: InterviewAlertsProps) {
   const [recentAlerts, setRecentAlerts] = useState<Alert[]>([])
   const [alertCounts, setAlertCounts] = useState({
     gaze: 0,
@@ -62,7 +58,7 @@ export function InterviewAlerts({
           `${toastConfig.icon} ${toastConfig.title}`,
           {
             description: toastConfig.description,
-          }
+          },
         )
       }
 
@@ -142,8 +138,8 @@ export function InterviewAlerts({
                     alert.severity === 'high'
                       ? 'bg-red-50 border-l-4 border-red-500'
                       : alert.severity === 'medium'
-                      ? 'bg-yellow-50 border-l-4 border-yellow-500'
-                      : 'bg-blue-50 border-l-4 border-blue-500'
+                        ? 'bg-yellow-50 border-l-4 border-yellow-500'
+                        : 'bg-blue-50 border-l-4 border-blue-500'
                   }`}
                 >
                   <div className='flex items-start gap-2'>
@@ -152,8 +148,8 @@ export function InterviewAlerts({
                         alert.severity === 'high'
                           ? 'text-red-600'
                           : alert.severity === 'medium'
-                          ? 'text-yellow-600'
-                          : 'text-blue-600'
+                            ? 'text-yellow-600'
+                            : 'text-blue-600'
                       }`}
                     />
                     <div className='flex-1'>

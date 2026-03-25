@@ -3,15 +3,16 @@ import { prisma } from '@/lib/prisma'
 
 export async function POST(
   request: NextRequest,
-  { params }: { params: { interview_id: string } },
+  { params }: { params: Promise<{ interview_id: string }> },
 ) {
   try {
+    const { interview_id } = await params
     const body = await request.json()
     const { feedback, scoring, tracking, completed } = body
 
     // Update interview with results
     const interview = await prisma.interview.update({
-      where: { interview_id: params.interview_id },
+      where: { interview_id: interview_id },
       data: {
         feedback: feedback || null,
         scoring: scoring || null,

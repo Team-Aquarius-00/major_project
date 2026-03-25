@@ -3,15 +3,16 @@ import { prisma } from '@/lib/prisma'
 
 export async function POST(
   request: NextRequest,
-  { params }: { params: { interview_id: string } },
+  { params }: { params: Promise<{ interview_id: string }> },
 ) {
   try {
+    const { interview_id } = await params
     const body = await request.json()
     const { tracking } = body
 
     // Fetch current interview to get existing tracking data
     const currentInterview = await prisma.interview.findUnique({
-      where: { interview_id: params.interview_id },
+      where: { interview_id: interview_id },
       select: { tracking: true },
     })
 
@@ -36,7 +37,7 @@ export async function POST(
 
     // Update interview with merged tracking data
     const interview = await prisma.interview.update({
-      where: { interview_id: params.interview_id },
+      where: { interview_id: interview_id },
       data: {
         tracking: mergedTracking,
       },
