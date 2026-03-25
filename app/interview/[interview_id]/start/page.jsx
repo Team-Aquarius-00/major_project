@@ -52,7 +52,7 @@ function StartInterview() {
   const [currentQuestion, setCurrentQuestion] = useState(0)
   const [totalQuestions, setTotalQuestions] = useState(0)
   const [interviewProgress, setInterviewProgress] = useState(0)
-  const [isLoading, setIsLoading] = useState(false)
+  const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState(null)
 
   // Video states
@@ -76,6 +76,8 @@ function StartInterview() {
   const [trackingStatus, setTrackingStatus] = useState('inactive')
   const [maxTabSwitches] = useState(5)
   const [currentAnswer, setCurrentAnswer] = useState('')
+  const [conversationLog, setConversationLog] = useState([])
+  const [qaPairs, setQaPairs] = useState([])
   const [showFeedback, setShowFeedback] = useState(false)
 
   // Interview Alerts (Real-time monitoring)
@@ -88,6 +90,13 @@ function StartInterview() {
   const progressRef = useRef(null)
   const videoRef = useRef(null)
   const trackingIntervalRef = useRef(null)
+  const callDurationRef = useRef(0)
+  const currentQuestionRef = useRef(0)
+  const totalQuestionsRef = useRef(0)
+  const alertsRef = useRef([])
+  const trackingServiceRef = useRef(null)
+  const qaPairsRef = useRef([])
+  const conversationLogRef = useRef([])
 
   useEffect(() => {
     if (interviewInfo) {
@@ -175,6 +184,34 @@ function StartInterview() {
       if (durationRef.current) clearInterval(durationRef.current)
     }
   }, [isCallActive])
+
+  useEffect(() => {
+    callDurationRef.current = callDuration
+  }, [callDuration])
+
+  useEffect(() => {
+    currentQuestionRef.current = currentQuestion
+  }, [currentQuestion])
+
+  useEffect(() => {
+    totalQuestionsRef.current = totalQuestions
+  }, [totalQuestions])
+
+  useEffect(() => {
+    alertsRef.current = alerts || []
+  }, [alerts])
+
+  useEffect(() => {
+    trackingServiceRef.current = trackingService
+  }, [trackingService])
+
+  useEffect(() => {
+    qaPairsRef.current = qaPairs
+  }, [qaPairs])
+
+  useEffect(() => {
+    conversationLogRef.current = conversationLog
+  }, [conversationLog])
 
   // Initialize tracking service
   const initializeTracking = () => {
@@ -338,41 +375,16 @@ function StartInterview() {
   }
 
   const initializeInterview = () => {
-    // #region agent log
-    const logInit = (message, data, hypothesisId) => {
-      if (!interview_id) return // Safety check
-      fetch(`http://127.0.0.1:7242/ingest/${interview_id}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          location: 'start/page.jsx:initializeInterview',
-          message,
-          data: data || {},
-          timestamp: Date.now(),
-          sessionId: 'debug-session',
-          hypothesisId,
-        }),
-      }).catch((err) => {
-        console.warn('Failed to send log:', err)
-      })
-    }
-    // #endregion
+    setIsLoading(true)
 
     if (!interview_id) {
       setError('Invalid interview session. Please start over.')
+      setIsLoading(false)
       return
     }
 
     try {
       const apiKey = process.env.NEXT_PUBLIC_VAPI_PUBLIC_KEY
-
-      // #region agent log
-      logInit(
-        'apiKey checked',
-        { apiKeyExists: !!apiKey, apiKeyLength: (apiKey || '').length },
-        'A',
-      )
-      // #endregion
 
       // Debug logging
       console.log('Vapi initialization:', {
@@ -384,14 +396,11 @@ function StartInterview() {
         setError(
           'Vapi API key is missing. Please check your environment variables.',
         )
+        setIsLoading(false)
         return
       }
 
       const vapiInstance = new Vapi(apiKey)
-
-      // #region agent log
-      logInit('Vapi instance created', { hasInstance: !!vapiInstance }, 'D')
-      // #endregion
 
       // Test connection
       console.log('Vapi instance created:', vapiInstance)
@@ -400,23 +409,13 @@ function StartInterview() {
       // Set up event listeners
       setupVapiEventListeners(vapiInstance)
 
-      // #region agent log
-      logInit('setupVapiEventListeners completed', {}, 'D')
-      // #endregion
-
       // Calculate total questions
       const questions = interviewInfo?.interviewData?.questionList || []
       setTotalQuestions(questions.length)
+      setError(null)
 
       console.log('Interview initialized successfully')
     } catch (err) {
-      // #region agent log
-      logInit(
-        'initializeInterview catch',
-        { message: err?.message, name: err?.name },
-        'A',
-      )
-      // #endregion
       console.error('Vapi initialization error:', {
         message: err.message,
         stack: err.stack,
@@ -427,44 +426,168 @@ function StartInterview() {
           err.message || 'Unknown error'
         }. Please refresh the page.`,
       )
+    } finally {
+      setIsLoading(false)
     }
   }
 
+  const normalizeText = (value) =>
+    String(value || '')
+      .trim()
+      .toLowerCase()
+      .replace(/\s+/g, ' ')
+
+  const mergeTranscriptText = (currentText, incomingText) => {
+    const existing = String(currentText || '').trim()
+    const incoming = String(incomingText || '').trim()
+
+    if (!incoming) return existing
+    if (!existing) return incoming
+    if (existing.includes(incoming)) return existing
+    if (incoming.includes(existing)) return incoming
+
+    return `${existing} ${incoming}`.trim()
+  }
+
+  const extractMessageText = (message) => {
+    if (!message) return ''
+
+    if (typeof message === 'string') return message
+    if (typeof message.transcript === 'string') return message.transcript
+    if (typeof message.text === 'string') return message.text
+    if (typeof message.message === 'string') return message.message
+    if (typeof message.content === 'string') return message.content
+
+    if (Array.isArray(message.content)) {
+      return message.content
+        .map((item) => item?.text || item?.content || '')
+        .filter(Boolean)
+        .join(' ')
+    }
+
+    return ''
+  }
+
+  const extractMessageRole = (message) => {
+    const role = String(message?.role || message?.speaker || '').toLowerCase()
+
+    if (
+      role.includes('assistant') ||
+      role.includes('bot') ||
+      role.includes('ai')
+    ) {
+      return 'assistant'
+    }
+
+    if (
+      role.includes('user') ||
+      role.includes('human') ||
+      role.includes('candidate')
+    ) {
+      return 'user'
+    }
+
+    return null
+  }
+
+  const appendConversationEntry = (role, text, message) => {
+    const entry = {
+      role,
+      text,
+      timestamp: new Date().toISOString(),
+      type: message?.type || null,
+    }
+
+    setConversationLog((prev) => [...prev, entry])
+  }
+
+  const isLikelyQuestion = (text) => {
+    const lower = normalizeText(text)
+    if (!lower) return false
+
+    return (
+      lower.includes('?') ||
+      /^(what|why|how|when|where|tell|describe|explain|walk|can you|could you)/.test(
+        lower,
+      )
+    )
+  }
+
+  const assignAssistantQuestion = (text) => {
+    const questions = interviewInfo?.interviewData?.questionList || []
+    const nextQuestionIndex = currentQuestionRef.current
+
+    if (!isLikelyQuestion(text) || nextQuestionIndex >= questions.length) {
+      return
+    }
+
+    const configuredQuestion =
+      questions[nextQuestionIndex]?.question ||
+      `Question ${nextQuestionIndex + 1}`
+
+    setQaPairs((prev) => {
+      if (prev[nextQuestionIndex]) return prev
+
+      const updated = [...prev]
+      updated[nextQuestionIndex] = {
+        questionNumber: nextQuestionIndex + 1,
+        configuredQuestion,
+        askedByAssistant: text,
+        answer: '',
+        askedAt: new Date().toISOString(),
+      }
+
+      return updated
+    })
+
+    setCurrentQuestion((prev) => {
+      const newQuestionCount = Math.min(prev + 1, questions.length)
+      setInterviewProgress(
+        (newQuestionCount / Math.max(questions.length, 1)) * 100,
+      )
+      return newQuestionCount
+    })
+  }
+
+  const assignUserAnswer = (text) => {
+    if (!text.trim()) return
+
+    setCurrentAnswer(text)
+    setQaPairs((prev) => {
+      const updated = [...prev]
+
+      if (!updated.length) {
+        updated.push({
+          questionNumber: 1,
+          configuredQuestion: 'Opening response',
+          askedByAssistant: '',
+          answer: text,
+          answeredAt: new Date().toISOString(),
+        })
+        return updated
+      }
+
+      const lastIndex = updated.length - 1
+      updated[lastIndex] = {
+        ...updated[lastIndex],
+        answer: mergeTranscriptText(updated[lastIndex]?.answer, text),
+        answeredAt: new Date().toISOString(),
+      }
+
+      return updated
+    })
+  }
+
   const setupVapiEventListeners = (vapiInstance) => {
-    // #region agent log
     vapiInstance.on('error', (e) => {
-      fetch(`http://127.0.0.1:7242/ingest/${interview_id}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          location: 'start/page.jsx:vapi-error',
-          message: 'vapi error event',
-          data: {
-            type: e?.type,
-            stage: e?.stage,
-            error: String(e?.error ?? e),
-          },
-          timestamp: Date.now(),
-          sessionId: 'debug-session',
-          hypothesisId: 'C',
-        }),
-      }).catch(() => {})
+      console.error('Vapi error event:', e)
+      toast.error('Vapi error occurred. Please try again.')
     })
+
     vapiInstance.on('call-start-failed', (e) => {
-      fetch(`http://127.0.0.1:7242/ingest/${interview_id}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          location: 'start/page.jsx:call-start-failed',
-          message: 'call-start-failed',
-          data: { stage: e?.stage, error: e?.error },
-          timestamp: Date.now(),
-          sessionId: 'debug-session',
-          hypothesisId: 'C',
-        }),
-      }).catch(() => {})
+      console.error('Vapi call start failed:', e)
+      toast.error('Failed to start interview call.')
     })
-    // #endregion
     vapiInstance.on('call-start', async () => {
       console.log('Call has started')
       setIsCallActive(true)
@@ -495,52 +618,95 @@ function StartInterview() {
 
       toast.info('Interview session ended')
 
-      // Stop tracking service and get final metrics
-      if (trackingService) {
-        trackingService.stopTracking()
-        const finalMetrics = trackingService.getFocusMetrics()
+      const service = trackingServiceRef.current
+      const finalMetrics = service ? service.getFocusMetrics() : null
 
-        // Save interview results with final metrics and alerts
-        try {
-          const response = await fetch(
-            `/api/interview/${interview_id}/results`,
-            {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                duration: callDuration,
-                completed: true,
-                feedback: {
-                  tab_switches: finalMetrics.tabSwitches.uiSwitchCount,
-                  gaze_alerts: finalMetrics.eyeMovement.distractions,
-                  focus_score: finalMetrics.tabSwitches.focusScore,
-                },
-                scoring: {
-                  questions_answered: currentQuestion,
-                  total_questions: totalQuestions,
-                  time_per_question: callDuration / currentQuestion,
-                },
-                tracking: {
-                  final_metrics: finalMetrics,
-                  alerts: alerts,
-                },
-              }),
-            },
-          )
+      if (service) {
+        service.stopTracking()
+      }
 
-          if (response.ok) {
-            console.log('Interview results saved successfully')
-            setShowFeedback(true)
-          } else {
-            console.error(
-              'Failed to save interview results:',
-              response.statusText,
-            )
-          }
-        } catch (error) {
-          console.error('Error saving interview results:', error)
-          toast.error('Failed to save interview results')
+      let llmAnalysis = null
+      try {
+        const analysisResponse = await fetch(
+          `/api/interview/${interview_id}/analyze`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              interviewId: String(interview_id),
+              candidateName: interviewInfo?.userName,
+              jobPosition:
+                interviewInfo?.interviewData?.job_position ||
+                interviewInfo?.interviewData?.jobPosition ||
+                '',
+              questionList: interviewInfo?.interviewData?.questionList || [],
+              qaPairs: qaPairsRef.current,
+              transcript: conversationLogRef.current,
+            }),
+          },
+        )
+
+        if (analysisResponse.ok) {
+          llmAnalysis = await analysisResponse.json()
+        } else {
+          const failurePayload = await analysisResponse.json().catch(() => ({}))
+          console.error('Analysis API failed:', failurePayload)
         }
+      } catch (analysisError) {
+        console.error('Error analyzing interview transcript:', analysisError)
+      }
+
+      // Save interview results with transcript and LLM score
+      try {
+        const duration = callDurationRef.current
+        const answeredQuestions = currentQuestionRef.current
+        const configuredQuestions = totalQuestionsRef.current
+        const safeAnsweredQuestions = Math.max(answeredQuestions, 1)
+
+        const response = await fetch(`/api/interview/${interview_id}/results`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            duration,
+            completed: true,
+            feedback: {
+              tab_switches: finalMetrics?.tabSwitches?.uiSwitchCount || 0,
+              gaze_alerts: finalMetrics?.eyeMovement?.distractions || 0,
+              focus_score: finalMetrics?.tabSwitches?.focusScore || 0,
+              transcript: conversationLogRef.current,
+              qa_pairs: qaPairsRef.current,
+              llm_summary: llmAnalysis?.summary || null,
+              recommendation: llmAnalysis?.recommendation || null,
+              strengths: llmAnalysis?.strengths || [],
+              improvement_areas: llmAnalysis?.improvementAreas || [],
+            },
+            scoring: {
+              questions_answered: answeredQuestions,
+              total_questions: configuredQuestions,
+              time_per_question: duration / safeAnsweredQuestions,
+              llm_overall_score: llmAnalysis?.overallScore ?? null,
+              llm_category_scores: llmAnalysis?.categoryScores || null,
+              question_scores: llmAnalysis?.questionEvaluations || [],
+            },
+            tracking: {
+              final_metrics: finalMetrics,
+              alerts: alertsRef.current,
+            },
+          }),
+        })
+
+        if (response.ok) {
+          console.log('Interview results saved successfully')
+          setShowFeedback(true)
+        } else {
+          console.error(
+            'Failed to save interview results:',
+            response.statusText,
+          )
+        }
+      } catch (saveError) {
+        console.error('Error saving interview results:', saveError)
+        toast.error('Failed to save interview results')
       }
     })
 
@@ -555,31 +721,26 @@ function StartInterview() {
     })
 
     vapiInstance.on('message', (message) => {
-      if (message.role === 'assistant') {
-        setCurrentQuestion((prev) => {
-          const newQuestionCount = Math.min(prev + 1, totalQuestions)
-          setInterviewProgress((newQuestionCount / totalQuestions) * 100)
-          return newQuestionCount
-        })
+      const role = extractMessageRole(message)
+      const text = extractMessageText(message)
+
+      if (!role || !text) {
+        return
+      }
+
+      appendConversationEntry(role, text, message)
+
+      if (role === 'assistant') {
+        assignAssistantQuestion(text)
+      }
+
+      if (role === 'user') {
+        assignUserAnswer(text)
       }
     })
   }
 
   const startCall = async () => {
-    // #region agent log
-    fetch(`http://127.0.0.1:7242/ingest/${interview_id}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        location: 'start/page.jsx:startCall entry',
-        message: 'startCall entry',
-        data: { vapiExists: !!vapi, interviewInfoExists: !!interviewInfo },
-        timestamp: Date.now(),
-        sessionId: 'debug-session',
-        hypothesisId: 'B',
-      }),
-    }).catch(() => {})
-    // #endregion
     if (!vapi || !interviewInfo) {
       console.error('Cannot start call:', {
         vapiExists: !!vapi,
@@ -590,20 +751,11 @@ function StartInterview() {
     }
 
     try {
-      // #region agent log
-      fetch(`http://127.0.0.1:7242/ingest/${interview_id}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          location: 'start/page.jsx:before vapi.start',
-          message: 'before vapi.start',
-          data: {},
-          timestamp: Date.now(),
-          sessionId: 'debug-session',
-          hypothesisId: 'C',
-        }),
-      }).catch(() => {})
-      // #endregion
+      const jobPosition =
+        interviewInfo?.interviewData?.job_position ||
+        interviewInfo?.interviewData?.jobPosition ||
+        'this role'
+
       const questionList = interviewInfo?.interviewData?.questionList
         ?.map((item) => item?.question)
         .join(', ')
@@ -615,30 +767,21 @@ function StartInterview() {
 
       console.log('Starting Vapi call with:', {
         userName: interviewInfo?.userName,
-        jobPosition: interviewInfo?.interviewData.job_position,
+        jobPosition,
         questionsCount: interviewInfo?.interviewData?.questionList?.length,
       })
 
       const assistantOptions = {
         name: 'AI Recruiter',
-        firstMessage: `Hi ${interviewInfo?.userName}, welcome to your ${interviewInfo?.interviewData.jobPosition} interview! I'm excited to chat with you today. Let's begin with a few questions to get to know you better.`,
-        transcriber: {
-          provider: 'deepgram',
-          model: 'nova-2',
-          language: 'en',
-        },
-        voice: {
-          provider: 'playht',
-          voiceId: 'jennifer',
-        },
+        firstMessage: `Hi ${interviewInfo?.userName}, welcome to your ${jobPosition} interview! I'm excited to chat with you today. Let's begin with a few questions to get to know you better.`,
         model: {
           provider: 'openai',
-          model: 'gpt-4',
+          model: 'gpt-4o-mini',
           messages: [
             {
               role: 'system',
               content: `
-You are an AI voice assistant conducting a professional interview for the position of ${interviewInfo?.interviewData.jobPosition}. Your role is to:
+You are an AI voice assistant conducting a professional interview for the position of ${jobPosition}. Your role is to:
 
 1. Begin with a warm, professional greeting
 2. Ask one question at a time from this list: ${questionList}
@@ -662,36 +805,8 @@ Keep responses concise and natural. Focus on making the candidate comfortable wh
       }
 
       console.log('Calling vapi.start() with assistant options')
-      vapi.start(assistantOptions)
-      // #region agent log
-      fetch(`http://127.0.0.1:7242/ingest/${interview_id}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          location: 'start/page.jsx:after vapi.start called',
-          message: 'vapi.start() invoked',
-          data: {},
-          timestamp: Date.now(),
-          sessionId: 'debug-session',
-          hypothesisId: 'C',
-        }),
-      }).catch(() => {})
-      // #endregion
+      await vapi.start(assistantOptions)
     } catch (error) {
-      // #region agent log
-      fetch(`http://127.0.0.1:7242/ingest/${interview_id}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          location: 'start/page.jsx:startCall catch',
-          message: 'startCall error',
-          data: { message: error?.message, name: error?.name },
-          timestamp: Date.now(),
-          sessionId: 'debug-session',
-          hypothesisId: 'C',
-        }),
-      }).catch(() => {})
-      // #endregion
       console.error('Failed to start call:', {
         message: error.message,
         stack: error.stack,
@@ -711,11 +826,15 @@ Keep responses concise and natural. Focus on making the candidate comfortable wh
   const toggleMute = () => {
     if (vapi) {
       if (isMuted) {
-        vapi.unmute()
+        if (typeof vapi.unmute === 'function') {
+          vapi.unmute()
+        }
         setIsMuted(false)
         toast.success('Microphone unmuted')
       } else {
-        vapi.mute()
+        if (typeof vapi.mute === 'function') {
+          vapi.mute()
+        }
         setIsMuted(true)
         toast.info('Microphone muted')
       }
@@ -730,11 +849,15 @@ Keep responses concise and natural. Focus on making the candidate comfortable wh
   const togglePause = () => {
     if (vapi) {
       if (isPaused) {
-        vapi.resume()
+        if (typeof vapi.resume === 'function') {
+          vapi.resume()
+        }
         setIsPaused(false)
         toast.success('Interview resumed')
       } else {
-        vapi.pause()
+        if (typeof vapi.pause === 'function') {
+          vapi.pause()
+        }
         setIsPaused(true)
         toast.info('Interview paused')
       }
