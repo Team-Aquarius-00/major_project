@@ -14,20 +14,49 @@ model Interview {
   job_description String?
   duration        String?
   questionList    Json?
-  userEmail       String?
+  adminEmail      String?   @map("userEmail")
   completed       Boolean?
   created_at      DateTime? @default(now()) @db.Timestamptz(6)
   feedback        Json?
   scoring         Json?
   tracking        Json?
   type            String[]
-  user_id         Int?
+  admin_id        Int?      @map("user_id")
+  admin           Admin?    @relation(fields: [admin_id], references: [id])
+  attempts        InterviewAttempt[]
 }
 
-model Users {
-  id         Int       @id(map: "users_pkey") @default(autoincrement())
+model Admin {
+  id         Int       @id @default(autoincrement())
   name       String?
-  email      String?   @unique(map: "users_email_key")
+  email      String?   @unique
   picture    String?
   created_at DateTime? @default(now()) @db.Timestamp(6)
+  interviews Interview[]
+}
+
+model InterviewTaker {
+  id         Int                @id @default(autoincrement())
+  name       String?
+  email      String?            @unique
+  picture    String?
+  created_at DateTime?          @default(now()) @db.Timestamp(6)
+  attempts   InterviewAttempt[]
+}
+
+model InterviewAttempt {
+  id                Int             @id @default(autoincrement())
+  interview_id      Int
+  interview_taker_id Int
+  started_at        DateTime?       @default(now()) @db.Timestamptz(6)
+  completed_at      DateTime?       @db.Timestamptz(6)
+  completed         Boolean?        @default(false)
+  feedback          Json?
+  scoring           Json?
+  tracking          Json?
+  interview         Interview       @relation(fields: [interview_id], references: [id], onDelete: Cascade)
+  taker             InterviewTaker  @relation(fields: [interview_taker_id], references: [id], onDelete: Cascade)
+
+  @@index([interview_id])
+  @@index([interview_taker_id])
 }

@@ -28,6 +28,7 @@ function Interview() {
   const [interviewData, setInterviewData] = useState(null)
   const [loading, setLoading] = useState(false)
   const [userName, setUserName] = useState('')
+  const [userEmail, setUserEmail] = useState('')
   const { interviewInfo, setInterviewInfo } = useContext(InterviewDataContext)
 
   if (!interview_id) {
@@ -78,9 +79,27 @@ function Interview() {
         return
       }
 
+      const attemptResponse = await axios.post('/api/interview-attempt', {
+        interview_id,
+        name: userName.trim(),
+        email: userEmail.trim() || undefined,
+      })
+
+      if (!attemptResponse.data?.success) {
+        toast.error('Failed to start interview attempt')
+        return
+      }
+
+      const attempt = attemptResponse.data.data
+
       console.log(response.data.data)
       setInterviewInfo({
+        ...response.data.data,
+        interview_id,
         userName: userName.trim(),
+        userEmail: userEmail.trim() || null,
+        interviewAttemptId: attempt?.id,
+        interviewTakerId: attempt?.interview_taker_id,
         interviewData: response.data.data,
       })
       router.push('/interview/' + interview_id + '/start')
@@ -232,6 +251,19 @@ function Interview() {
                   onChange={(e) => setUserName(e.target.value)}
                   className='h-14 text-lg text-center border-2 border-gray-200 focus:border-blue-500 focus:ring-4 focus:ring-blue-100 rounded-xl transition-all duration-200'
                   autoFocus
+                />
+              </div>
+
+              <div className='mb-6'>
+                <label className='block text-sm font-medium text-gray-700 mb-2 text-center'>
+                  Email (optional)
+                </label>
+                <Input
+                  placeholder='e.g., john@example.com'
+                  type='email'
+                  value={userEmail}
+                  onChange={(e) => setUserEmail(e.target.value)}
+                  className='h-12 text-base text-center border-2 border-gray-200 focus:border-blue-500 focus:ring-4 focus:ring-blue-100 rounded-xl transition-all duration-200'
                 />
               </div>
 

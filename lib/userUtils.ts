@@ -1,19 +1,19 @@
 import 'dotenv/config'
 import { prisma } from '@/lib/prisma'
 
-export async function createOrFetchUser(
+export async function createOrFetchAdmin(
   email: string,
   name?: string,
   picture?: string,
 ) {
-  // Check if user exists
-  let user = await prisma.users.findUnique({
+  // Check if admin exists
+  let admin = await prisma.admin.findUnique({
     where: { email },
   })
 
-  if (!user) {
-    // Create user if not exists
-    user = await prisma.users.create({
+  if (!admin) {
+    // Create admin if not exists
+    admin = await prisma.admin.create({
       data: {
         email,
         name,
@@ -22,5 +22,8 @@ export async function createOrFetchUser(
     })
   }
 
-  return user
+  return admin
 }
+
+// Backward-compatible alias used by existing routes/components.
+export const createOrFetchUser = createOrFetchAdmin

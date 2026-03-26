@@ -697,6 +697,42 @@ function StartInterview() {
 
         if (response.ok) {
           console.log('Interview results saved successfully')
+
+          // Also save results per taker attempt for candidate-level history.
+          if (interviewInfo?.interviewAttemptId) {
+            await fetch('/api/interview-attempt', {
+              method: 'PATCH',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                attempt_id: interviewInfo.interviewAttemptId,
+                completed: true,
+                feedback: {
+                  tab_switches: finalMetrics?.tabSwitches?.uiSwitchCount || 0,
+                  gaze_alerts: finalMetrics?.eyeMovement?.distractions || 0,
+                  focus_score: finalMetrics?.tabSwitches?.focusScore || 0,
+                  transcript: conversationLogRef.current,
+                  qa_pairs: qaPairsRef.current,
+                  llm_summary: llmAnalysis?.summary || null,
+                  recommendation: llmAnalysis?.recommendation || null,
+                  strengths: llmAnalysis?.strengths || [],
+                  improvement_areas: llmAnalysis?.improvementAreas || [],
+                },
+                scoring: {
+                  questions_answered: answeredQuestions,
+                  total_questions: configuredQuestions,
+                  time_per_question: duration / safeAnsweredQuestions,
+                  llm_overall_score: llmAnalysis?.overallScore ?? null,
+                  llm_category_scores: llmAnalysis?.categoryScores || null,
+                  question_scores: llmAnalysis?.questionEvaluations || [],
+                },
+                tracking: {
+                  final_metrics: finalMetrics,
+                  alerts: alertsRef.current,
+                },
+              }),
+            })
+          }
+
           setShowFeedback(true)
         } else {
           console.error(
