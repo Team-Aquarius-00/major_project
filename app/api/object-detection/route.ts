@@ -4,51 +4,36 @@ const BACKEND_URL = process.env.BACKEND_URL || 'http://localhost:8000'
 
 export async function POST(request: NextRequest) {
   try {
-    const body = await request.json()
-    const {
-      interview_id,
-      candidate_id,
-      gaze_x,
-      gaze_y,
-      gaze_direction,
-      confidence,
-      is_looking_at_screen,
-      timestamp,
-    } = body
+    const incomingFormData = await request.formData()
+    const file = incomingFormData.get('file')
 
-    // Forward to FastAPI backend
-    const response = await fetch(`${BACKEND_URL}/api/gaze-data`, {
+    if (!file || typeof file === 'string') {
+      return NextResponse.json(
+        { success: false, error: 'Missing image file in form-data' },
+        { status: 400 },
+      )
+    }
+
+    const backendFormData = new FormData()
+    backendFormData.append('file', file, 'frame.jpg')
+
+    // Forward frame to FastAPI object detection endpoint.
+    const response = await fetch(`${BACKEND_URL}/detect`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        interview_id,
-        candidate_id,
-        gaze_x,
-        gaze_y,
-        gaze_direction,
-        confidence,
-        is_looking_at_screen,
-        timestamp: timestamp || new Date().toISOString(),
-      }),
+      body: backendFormData,
     })
 
     if (!response.ok) {
-      throw new Error(`Backend error: ${response.statusText}`)
+      const backendError = await response.text().catch(() => '')
+      throw new Error(`Backend error: ${response.status} ${backendError}`)
     }
 
     const result = await response.json()
-
-    return NextResponse.json({
-      success: true,
-      message: 'Gaze data recorded',
-      backend_response: result,
-    })
+    return NextResponse.json(result)
   } catch (error: unknown) {
-    console.error('Error recording gaze data:', error)
+    console.error('Error running object detection:', error)
     return NextResponse.json(
-      { success: false, error: 'Failed to record gaze data' },
+      { success: false, error: 'Failed to run object detection' },
       { status: 500 },
     )
   }

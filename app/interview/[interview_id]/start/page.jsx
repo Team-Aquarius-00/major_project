@@ -79,6 +79,10 @@ function StartInterview() {
   const [conversationLog, setConversationLog] = useState([])
   const [qaPairs, setQaPairs] = useState([])
   const [showFeedback, setShowFeedback] = useState(false)
+  const [detectedClasses, setDetectedClasses] = useState([])
+  const [detectionViolations, setDetectionViolations] = useState([])
+  const [detectionScore, setDetectionScore] = useState(0)
+  const [isDetectionRunning, setIsDetectionRunning] = useState(false)
 
   // Interview Alerts (Real-time monitoring)
   const { alerts, isConnected } = useInterviewAlerts(
@@ -89,7 +93,9 @@ function StartInterview() {
   const durationRef = useRef(null)
   const progressRef = useRef(null)
   const videoRef = useRef(null)
+  const detectionCanvasRef = useRef(null)
   const trackingIntervalRef = useRef(null)
+  const detectionIntervalRef = useRef(null)
   const callDurationRef = useRef(0)
   const currentQuestionRef = useRef(0)
   const totalQuestionsRef = useRef(0)
@@ -212,6 +218,81 @@ function StartInterview() {
   useEffect(() => {
     conversationLogRef.current = conversationLog
   }, [conversationLog])
+
+  const stopLiveDetection = () => {
+    if (detectionIntervalRef.current) {
+      clearInterval(detectionIntervalRef.current)
+      detectionIntervalRef.current = null
+    }
+    setIsDetectionRunning(false)
+  }
+
+  const captureDetectionFrame = async () => {
+    if (!videoRef.current || !detectionCanvasRef.current || !isVideoOn) return
+
+    const videoElement = videoRef.current
+    if (videoElement.readyState < 2) return
+
+    const canvas = detectionCanvasRef.current
+    const width = videoElement.videoWidth || 640
+    const height = videoElement.videoHeight || 480
+    canvas.width = width
+    canvas.height = height
+
+    const context = canvas.getContext('2d')
+    if (!context) return
+
+    context.drawImage(videoElement, 0, 0, width, height)
+
+    const blob = await new Promise((resolve) => {
+      canvas.toBlob(resolve, 'image/jpeg', 0.85)
+    })
+
+    if (!blob) return
+
+    const formData = new FormData()
+    formData.append('file', blob, 'frame.jpg')
+
+    try {
+      const response = await fetch('/api/object-detection', {
+        method: 'POST',
+        body: formData,
+      })
+
+      if (!response.ok) {
+        throw new Error(`Detection request failed: ${response.status}`)
+      }
+
+      const data = await response.json()
+      setDetectedClasses(Array.isArray(data?.classes) ? data.classes : [])
+      setDetectionViolations(
+        Array.isArray(data?.violations) ? data.violations : [],
+      )
+      setDetectionScore(typeof data?.score === 'number' ? data.score : 0)
+    } catch (detectionError) {
+      console.debug('Live detection skipped:', detectionError)
+    }
+  }
+
+  const startLiveDetection = () => {
+    if (detectionIntervalRef.current) return
+
+    setIsDetectionRunning(true)
+    captureDetectionFrame()
+    detectionIntervalRef.current = setInterval(captureDetectionFrame, 5000)
+  }
+
+  useEffect(() => {
+    if (isCallActive) {
+      startLiveDetection()
+    } else {
+      stopLiveDetection()
+    }
+
+    return () => {
+      stopLiveDetection()
+    }
+  }, [isCallActive, isVideoOn])
 
   // Initialize tracking service
   const initializeTracking = () => {
@@ -698,7 +779,7 @@ function StartInterview() {
         if (response.ok) {
           console.log('Interview results saved successfully')
 
-          // Also save results per taker attempt for candidate-level history.
+          // Save results per candidate attempt for InterviewAttempt history.
           if (interviewInfo?.interviewAttemptId) {
             await fetch('/api/interview-attempt', {
               method: 'PATCH',
@@ -841,8 +922,10 @@ Keep responses concise and natural. Focus on making the candidate comfortable wh
       }
 
       console.log('Calling vapi.start() with assistant options')
+      startLiveDetection()
       await vapi.start(assistantOptions)
     } catch (error) {
+      stopLiveDetection()
       console.error('Failed to start call:', {
         message: error.message,
         stack: error.stack,
@@ -1106,6 +1189,8 @@ Keep responses concise and natural. Focus on making the candidate comfortable wh
                       )}
                     </div>
                   )}
+
+                  <canvas ref={detectionCanvasRef} className='hidden' />
                 </div>
               </div>
 
@@ -1130,6 +1215,42 @@ Keep responses concise and natural. Focus on making the candidate comfortable wh
               <div className='text-sm text-gray-500'>
                 Question {currentQuestion} of {totalQuestions}
               </div>
+
+              {isCallActive && (
+                <div className='mt-4 p-4 bg-gray-50 rounded-xl border border-gray-200 text-left'>
+                  <h3 className='font-semibold text-gray-900 mb-2'>
+                    Current Detected Classes
+                  </h3>
+
+                  {detectedClasses.length > 0 ? (
+                    <div className='flex flex-wrap gap-2 mb-2'>
+                      {detectedClasses.map((detectedClass) => (
+                        <span
+                          key={detectedClass}
+                          className='px-2 py-1 text-xs bg-blue-100 text-blue-700 rounded-full'
+                        >
+                          {detectedClass}
+                        </span>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className='text-sm text-gray-600 mb-2'>
+                      No target objects detected
+                    </p>
+                  )}
+
+                  {detectionViolations.length > 0 && (
+                    <p className='text-xs text-red-600 mb-1'>
+                      {detectionViolations.join(', ')}
+                    </p>
+                  )}
+
+                  <p className='text-xs text-gray-500'>
+                    Detection score: {detectionScore} |{' '}
+                    {isDetectionRunning ? 'Monitoring every 5s' : 'Stopped'}
+                  </p>
+                </div>
+              )}
             </div>
           </div>
         </div>
