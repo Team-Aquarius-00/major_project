@@ -38,6 +38,9 @@ import InterviewFeedback from './_components/InterviewFeedback'
 import { useInterviewAlerts } from '@/hooks/useInterviewAlerts'
 import { InterviewAlerts } from '@/components/InterviewAlerts'
 
+// Testing toggle: disable all Vapi methods to validate gaze/focus tracking only.
+const DISABLE_VAPI_FOR_TESTING = true
+
 function StartInterview() {
   const { interviewInfo, setInterviewInfo } = useContext(InterviewDataContext)
   const { interview_id } = useParams()
@@ -269,6 +272,15 @@ function StartInterview() {
         Array.isArray(data?.violations) ? data.violations : [],
       )
       setDetectionScore(typeof data?.score === 'number' ? data.score : 0)
+
+      const tracking = trackingServiceRef.current
+      if (tracking) {
+        tracking.updateGazeObservation({
+          facePresent: Boolean(data?.face_present),
+          personCount: Number(data?.person_count ?? 0),
+        })
+        setFocusMetrics(tracking.getFocusMetrics())
+      }
     } catch (detectionError) {
       console.debug('Live detection skipped:', detectionError)
     }
@@ -311,29 +323,8 @@ function StartInterview() {
       // Override the handleTabSwitch method to add UI notifications
       const originalHandleTabSwitch = service.handleTabSwitch.bind(service)
       service.handleTabSwitch = async (eventType) => {
-        // Add UI notifications for tab switches
-        if (eventType === 'switch_away' || eventType === 'window_blur') {
-          const currentMetrics = service.getFocusMetrics()
-          const currentSwitchCount = currentMetrics.tabSwitches.uiSwitchCount
-
-          if (currentSwitchCount <= maxTabSwitches) {
-            toast.warning(
-              `New tab added! (${currentSwitchCount}/${maxTabSwitches})`,
-              {
-                description: 'Please stay focused on the interview.',
-                duration: 3000,
-              },
-            )
-          } else {
-            toast.error(
-              `Maximum tab switches exceeded! (${currentSwitchCount}/${maxTabSwitches})`,
-              {
-                description: 'This may affect your interview score.',
-                duration: 5000,
-              },
-            )
-          }
-        }
+        const beforeMetrics = service.getFocusMetrics()
+        const previousSwitchCount = beforeMetrics.tabSwitches.uiSwitchCount
 
         // Call original method to handle the actual tracking logic
         await originalHandleTabSwitch(eventType)
@@ -341,6 +332,31 @@ function StartInterview() {
         // Update UI with latest metrics
         const updatedMetrics = service.getFocusMetrics()
         setFocusMetrics(updatedMetrics)
+
+        const updatedSwitchCount = updatedMetrics.tabSwitches.uiSwitchCount
+        const isAwayEvent =
+          eventType === 'switch_away' || eventType === 'window_blur'
+
+        // Show notifications only when a new away transition is actually counted.
+        if (isAwayEvent && updatedSwitchCount > previousSwitchCount) {
+          if (updatedSwitchCount <= maxTabSwitches) {
+            toast.warning(
+              `New tab added! (${updatedSwitchCount}/${maxTabSwitches})`,
+              {
+                description: 'Please stay focused on the interview.',
+                duration: 3000,
+              },
+            )
+          } else {
+            toast.error(
+              `Maximum tab switches exceeded! (${updatedSwitchCount}/${maxTabSwitches})`,
+              {
+                description: 'This may affect your interview score.',
+                duration: 5000,
+              },
+            )
+          }
+        }
       }
 
       // Add global reference for debugging (development only)
@@ -351,9 +367,8 @@ function StartInterview() {
         )
       }
 
-      // Start tracking immediately - don't wait for isCallActive
-      service.startTracking()
-      setTrackingStatus('active')
+      // Keep service ready, but start tracking only after interview starts.
+      setTrackingStatus('inactive')
 
       // Update focus metrics every 2 seconds for more responsive updates
       trackingIntervalRef.current = setInterval(() => {
@@ -363,7 +378,9 @@ function StartInterview() {
         }
       }, 2000)
 
-      console.log('Tracking service initialized and started')
+      console.log(
+        'Tracking service initialized and waiting for interview start',
+      )
     } catch (error) {
       console.error('Failed to initialize tracking service:', error)
       setTrackingStatus('error')
@@ -460,6 +477,15 @@ function StartInterview() {
 
     if (!interview_id) {
       setError('Invalid interview session. Please start over.')
+      setIsLoading(false)
+      return
+    }
+
+    if (DISABLE_VAPI_FOR_TESTING) {
+      const questions = interviewInfo?.interviewData?.questionList || []
+      setTotalQuestions(questions.length)
+      setVapi(null)
+      setError(null)
       setIsLoading(false)
       return
     }
@@ -858,6 +884,13 @@ function StartInterview() {
   }
 
   const startCall = async () => {
+    if (DISABLE_VAPI_FOR_TESTING) {
+      setIsCallActive(true)
+      setIsPaused(false)
+      toast.info('Testing mode: Vapi disabled. Focus tracking is active.')
+      return
+    }
+
     if (!vapi || !interviewInfo) {
       console.error('Cannot start call:', {
         vapiExists: !!vapi,
@@ -936,6 +969,13 @@ Keep responses concise and natural. Focus on making the candidate comfortable wh
   }
 
   const stopInterview = () => {
+    if (DISABLE_VAPI_FOR_TESTING) {
+      setIsCallActive(false)
+      setIsPaused(false)
+      toast.info('Testing mode: interview stopped.')
+      return
+    }
+
     if (vapi) {
       vapi.stop()
       setIsCallActive(false)
@@ -943,6 +983,19 @@ Keep responses concise and natural. Focus on making the candidate comfortable wh
   }
 
   const toggleMute = () => {
+    if (DISABLE_VAPI_FOR_TESTING) {
+      setIsMuted((prev) => {
+        const next = !prev
+        toast[next ? 'info' : 'success'](
+          next
+            ? 'Microphone muted (testing mode)'
+            : 'Microphone unmuted (testing mode)',
+        )
+        return next
+      })
+      return
+    }
+
     if (vapi) {
       if (isMuted) {
         if (typeof vapi.unmute === 'function') {
@@ -966,6 +1019,19 @@ Keep responses concise and natural. Focus on making the candidate comfortable wh
   }
 
   const togglePause = () => {
+    if (DISABLE_VAPI_FOR_TESTING) {
+      setIsPaused((prev) => {
+        const next = !prev
+        toast[next ? 'info' : 'success'](
+          next
+            ? 'Interview paused (testing mode)'
+            : 'Interview resumed (testing mode)',
+        )
+        return next
+      })
+      return
+    }
+
     if (vapi) {
       if (isPaused) {
         if (typeof vapi.resume === 'function') {
@@ -991,6 +1057,18 @@ Keep responses concise and natural. Focus on making the candidate comfortable wh
       .toString()
       .padStart(2, '0')}:${secs.toString().padStart(2, '0')}`
   }
+
+  const distractionRate = focusMetrics.eyeMovement.distractionRate || 0
+  const eyeFocusPercent = Math.max(0, Math.round((1 - distractionRate) * 100))
+  const candidateFocusStatus = focusMetrics.tabSwitches.isCurrentlyAway
+    ? 'Away from interview tab'
+    : focusMetrics.eyeMovement.totalSamples === 0
+      ? 'Calibrating focus detection'
+      : eyeFocusPercent >= 80
+        ? 'Focused'
+        : eyeFocusPercent >= 55
+          ? 'Needs attention'
+          : 'Distracted'
 
   if (isLoading) {
     return (
@@ -1031,119 +1109,150 @@ Keep responses concise and natural. Focus on making the candidate comfortable wh
   }
 
   return (
-    <div className='min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50'>
+    <div className='relative min-h-screen overflow-hidden bg-[radial-gradient(circle_at_top_left,_#dbeafe,_#f8fafc_42%,_#eef2ff_72%,_#e0f2fe)]'>
+      <div className='pointer-events-none absolute -top-24 -left-24 h-72 w-72 rounded-full bg-cyan-200/35 blur-3xl' />
+      <div className='pointer-events-none absolute -top-20 right-0 h-80 w-80 rounded-full bg-blue-300/30 blur-3xl' />
+
       {/* Header */}
-      <div className='bg-white border-b border-gray-200 px-6 py-4'>
-        <div className='max-w-7xl mx-auto flex items-center justify-between'>
-          <div className='flex items-center gap-3'>
-            <div className='w-10 h-10 bg-gradient-to-br from-blue-500 to-purple-600 rounded-lg flex items-center justify-center'>
-              <Bot className='h-6 w-6 text-white' />
-            </div>
-            <div>
-              <h1 className='text-xl font-bold text-gray-900'>
-                AI Interview Session
-              </h1>
-              <p className='text-sm text-gray-600'>
-                {interviewInfo?.interviewData?.job_position}
-              </p>
-            </div>
-          </div>
-
-          <div className='flex items-center gap-4'>
-            <div className='flex items-center gap-2 bg-gray-100 px-4 py-2 rounded-full'>
-              <Timer className='h-4 w-4 text-gray-600' />
-              <span className='font-mono font-semibold text-gray-900'>
-                {formatTime(callDuration)}
-              </span>
+      <div className='sticky top-0 z-20 border-b border-slate-200/70 bg-white/85 backdrop-blur-xl'>
+        <div className='max-w-7xl mx-auto px-4 sm:px-6 py-4'>
+          <div className='flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between'>
+            <div className='flex items-center gap-3'>
+              <div className='w-11 h-11 bg-gradient-to-br from-sky-500 to-indigo-600 rounded-xl flex items-center justify-center shadow-lg shadow-blue-500/25'>
+                <Bot className='h-6 w-6 text-white' />
+              </div>
+              <div>
+                <h1 className='text-xl font-bold text-slate-900 tracking-tight'>
+                  Interview Studio
+                </h1>
+                <p className='text-sm text-slate-600'>
+                  {interviewInfo?.interviewData?.job_position ||
+                    'Interview Session'}
+                </p>
+              </div>
             </div>
 
-            {trackingStatus !== 'inactive' && (
-              <div
-                className={`flex items-center gap-2 px-4 py-2 rounded-full ${
-                  focusMetrics.tabSwitches.uiSwitchCount >= maxTabSwitches
-                    ? 'bg-red-100 text-red-700'
-                    : focusMetrics.tabSwitches.uiSwitchCount > 0
-                      ? 'bg-yellow-100 text-yellow-700'
-                      : 'bg-green-100 text-green-700'
-                }`}
-              >
-                <Monitor className='h-4 w-4' />
-                <span className='font-semibold text-sm'>
-                  Tabs: {focusMetrics.tabSwitches.uiSwitchCount}/
-                  {maxTabSwitches}
+            <div className='flex flex-wrap items-center gap-2 sm:gap-3'>
+              <div className='inline-flex items-center gap-2 bg-slate-900 text-white px-3 py-2 rounded-full shadow-sm'>
+                <Timer className='h-4 w-4 text-sky-300' />
+                <span className='font-mono text-sm font-semibold tracking-wide'>
+                  {formatTime(callDuration)}
                 </span>
               </div>
-            )}
 
-            {isCallActive && (
-              <div className='flex items-center gap-2'>
-                <div className='w-2 h-2 bg-green-500 rounded-full animate-pulse'></div>
-                <span className='text-sm text-green-600 font-medium'>Live</span>
+              <div
+                className={`inline-flex items-center gap-2 px-3 py-2 rounded-full text-sm font-medium ${
+                  candidateFocusStatus === 'Focused'
+                    ? 'bg-emerald-100 text-emerald-800'
+                    : candidateFocusStatus === 'Needs attention'
+                      ? 'bg-amber-100 text-amber-800'
+                      : 'bg-rose-100 text-rose-800'
+                }`}
+              >
+                <Eye className='h-4 w-4' />
+                {candidateFocusStatus}
               </div>
-            )}
+
+              {trackingStatus !== 'inactive' && (
+                <div
+                  className={`inline-flex items-center gap-2 px-3 py-2 rounded-full text-sm font-semibold ${
+                    focusMetrics.tabSwitches.uiSwitchCount >= maxTabSwitches
+                      ? 'bg-red-100 text-red-700'
+                      : focusMetrics.tabSwitches.uiSwitchCount > 0
+                        ? 'bg-yellow-100 text-yellow-700'
+                        : 'bg-green-100 text-green-700'
+                  }`}
+                >
+                  <Monitor className='h-4 w-4' />
+                  Tabs {focusMetrics.tabSwitches.uiSwitchCount}/{maxTabSwitches}
+                </div>
+              )}
+
+              {isCallActive && (
+                <div className='inline-flex items-center gap-2 px-3 py-2 rounded-full bg-emerald-100 text-emerald-800 text-sm font-semibold'>
+                  <span className='w-2 h-2 bg-emerald-500 rounded-full animate-pulse' />
+                  Live
+                </div>
+              )}
+
+              <div
+                className={`inline-flex items-center gap-2 px-3 py-2 rounded-full text-sm font-medium ${
+                  isConnected
+                    ? 'bg-sky-100 text-sky-700'
+                    : 'bg-slate-100 text-slate-600'
+                }`}
+              >
+                <Activity className='h-4 w-4' />
+                {isConnected ? 'Alerts Online' : 'Alerts Offline'}
+              </div>
+            </div>
           </div>
         </div>
       </div>
 
-      {/* Real-time Alerts Section */}
+      {/* Real-time Alerts Section
       {isCallActive && (
-        <div className='bg-white border-b border-gray-200 px-6 py-4'>
-          <div className='max-w-7xl mx-auto'>
+        <div className='border-b border-slate-200/70 bg-white/70 backdrop-blur-sm'>
+          <div className='max-w-7xl mx-auto px-4 sm:px-6 py-3'>
+            <div className='inline-flex items-center gap-2 mb-3 text-sm font-medium text-slate-700'>
+              <Activity className='h-4 w-4 text-cyan-600' />
+              Live Integrity Alerts
+            </div>
             <InterviewAlerts alerts={alerts} />
           </div>
         </div>
-      )}
+      )} */}
 
       {/* Main Content */}
-      <div className='max-w-7xl mx-auto px-6 py-8'>
-        <div className='grid grid-cols-1 lg:grid-cols-2 gap-8'>
-          {/* AI Interviewer Panel */}
-          <div className='bg-white rounded-3xl shadow-xl border border-gray-100 p-8'>
-            <div className='text-center'>
-              <div className='relative inline-block mb-6'>
-                {!activeUser && (
-                  <div className='absolute inset-0 rounded-full bg-blue-500 opacity-75 animate-ping'></div>
-                )}
-                <div className='relative w-32 h-32 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full flex items-center justify-center shadow-lg shadow-blue-500/25'>
-                  <Bot className='h-16 w-16 text-white' />
-                </div>
-                {!activeUser && (
-                  <div className='absolute -bottom-2 -right-2 w-8 h-8 bg-green-500 rounded-full flex items-center justify-center'>
-                    <Volume2 className='h-4 w-4 text-white' />
-                  </div>
-                )}
-              </div>
-
-              <h2 className='text-2xl font-bold text-gray-900 mb-2'>
-                AI Recruiter
+      <div className='relative max-w-7xl mx-auto px-4 sm:px-6 py-8'>
+        <div className='mb-6 rounded-2xl border border-white/60 bg-white/80 backdrop-blur-sm px-5 py-4 shadow-sm'>
+          <div className='flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between'>
+            <div>
+              <h2 className='text-lg sm:text-xl font-semibold text-slate-900'>
+                Live Interview Workspace
               </h2>
-              <p className='text-gray-600 mb-4'>
-                {/* {activeUser ? 'Listening to your response...' : 'Speaking...'} */}
+              <p className='text-sm text-slate-600'>
+                Monitor candidate behavior, response progress, and session
+                integrity in real time.
               </p>
-
-              {!isCallActive && (
-                <Button
-                  onClick={startCall}
-                  className='bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white px-8 py-3 text-lg font-semibold shadow-lg shadow-blue-500/25 hover:shadow-xl hover:shadow-blue-500/30 transition-all duration-200 hover:-translate-y-0.5'
-                >
-                  <Play className='h-5 w-5 mr-2' />
-                  Start Interview
-                </Button>
-              )}
+            </div>
+            <div className='text-xs sm:text-sm text-slate-600 font-medium'>
+              Interview ID: {String(interview_id)}
             </div>
           </div>
+        </div>
 
+        <div className='grid grid-cols-1 lg:grid-cols-12 gap-6 items-start'>
           {/* Candidate Panel with Video */}
-          <div className='bg-white rounded-3xl shadow-xl border border-gray-100 p-8'>
+          <div className='lg:col-span-8 lg:order-1 bg-white/95 rounded-3xl shadow-xl border border-white/60 ring-1 ring-slate-200/70 p-5 sm:p-7'>
+            <div className='mb-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between'>
+              <div>
+                <h2 className='text-2xl font-bold text-slate-900 tracking-tight'>
+                  {interviewInfo?.userName || 'Candidate'}
+                </h2>
+                <p className='text-sm text-slate-600'>Live candidate stage</p>
+              </div>
+              <div className='flex items-center gap-2 text-xs sm:text-sm'>
+                <span className='inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-full bg-slate-100 text-slate-700 font-medium'>
+                  <Target className='h-3.5 w-3.5' />
+                  Focus {eyeFocusPercent}%
+                </span>
+                <span className='inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-full bg-violet-100 text-violet-700 font-medium'>
+                  <FileText className='h-3.5 w-3.5' />Q{currentQuestion}/
+                  {totalQuestions}
+                </span>
+              </div>
+            </div>
+
             <div className='text-center'>
               {/* Video Display */}
               <div className='relative mb-6'>
-                <div className='relative w-full max-w-sm mx-auto'>
+                <div className='relative w-full max-w-3xl mx-auto'>
                   {videoError ? (
-                    <div className='w-full h-64 bg-gray-100 rounded-2xl flex items-center justify-center border-2 border-dashed border-gray-300'>
+                    <div className='w-full h-80 bg-slate-100 rounded-2xl flex items-center justify-center border-2 border-dashed border-slate-300'>
                       <div className='text-center'>
-                        <Camera className='h-12 w-12 text-gray-400 mx-auto mb-2' />
-                        <p className='text-sm text-gray-500'>{videoError}</p>
+                        <Camera className='h-12 w-12 text-slate-400 mx-auto mb-2' />
+                        <p className='text-sm text-slate-500'>{videoError}</p>
                         <Button
                           onClick={initializeVideo}
                           variant='outline'
@@ -1155,7 +1264,7 @@ Keep responses concise and natural. Focus on making the candidate comfortable wh
                       </div>
                     </div>
                   ) : (
-                    <div className='relative w-full h-64 bg-gray-900 rounded-2xl overflow-hidden'>
+                    <div className='relative w-full aspect-video bg-slate-900 rounded-2xl overflow-hidden ring-1 ring-slate-800/30 shadow-2xl'>
                       <video
                         ref={videoRef}
                         autoPlay
@@ -1165,12 +1274,16 @@ Keep responses concise and natural. Focus on making the candidate comfortable wh
                       />
 
                       {/* Video Controls Overlay */}
-                      <div className='absolute bottom-2 right-2'>
+                      <div className='absolute bottom-3 right-3 flex items-center gap-2'>
+                        <div className='hidden sm:inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-black/55 text-white text-xs font-medium'>
+                          <Eye className='h-3.5 w-3.5' />
+                          {candidateFocusStatus}
+                        </div>
                         <Button
                           onClick={toggleVideo}
                           size='sm'
                           variant={isVideoOn ? 'default' : 'destructive'}
-                          className='h-8 w-8 rounded-full p-0'
+                          className='h-9 w-9 rounded-full p-0 shadow-md'
                         >
                           {isVideoOn ? (
                             <Video className='h-4 w-4' />
@@ -1182,9 +1295,15 @@ Keep responses concise and natural. Focus on making the candidate comfortable wh
 
                       {/* Speaking Indicator */}
                       {activeUser && (
-                        <div className='absolute top-2 left-2 flex items-center gap-2 bg-blue-500 text-white px-3 py-1 rounded-full text-sm font-medium'>
+                        <div className='absolute top-3 left-3 flex items-center gap-2 bg-blue-500/95 text-white px-3 py-1 rounded-full text-sm font-medium shadow-sm'>
                           <Mic className='h-3 w-3' />
                           Speaking
+                        </div>
+                      )}
+
+                      {isCallActive && (
+                        <div className='absolute top-3 right-3 bg-black/55 text-white text-xs px-2.5 py-1 rounded-full font-semibold'>
+                          Live Camera
                         </div>
                       )}
                     </div>
@@ -1194,232 +1313,331 @@ Keep responses concise and natural. Focus on making the candidate comfortable wh
                 </div>
               </div>
 
-              <h2 className='text-2xl font-bold text-gray-900 mb-2'>
-                {interviewInfo?.userName || 'Candidate'}
-              </h2>
-              <p className='text-gray-600 mb-4'>
-                {/* {activeUser ? 'Your turn to speak' : 'AI is speaking...'} */}
-              </p>
-
               {/* Progress Bar */}
               {isCallActive && (
-                <div className='w-full bg-gray-200 rounded-full h-3 mb-4'>
+                <div className='w-full bg-slate-200 rounded-full h-3 mb-4'>
                   <div
                     ref={progressRef}
-                    className='bg-gradient-to-r from-blue-500 to-purple-600 h-3 rounded-full transition-all duration-300'
+                    className='bg-gradient-to-r from-cyan-500 via-blue-500 to-indigo-600 h-3 rounded-full transition-all duration-300'
                     style={{ width: `${interviewProgress}%` }}
                   ></div>
                 </div>
               )}
 
-              <div className='text-sm text-gray-500'>
+              <div className='text-sm text-slate-500'>
                 Question {currentQuestion} of {totalQuestions}
               </div>
 
               {isCallActive && (
-                <div className='mt-4 p-4 bg-gray-50 rounded-xl border border-gray-200 text-left'>
-                  <h3 className='font-semibold text-gray-900 mb-2'>
-                    Current Detected Classes
-                  </h3>
+                <div className='mt-5 p-4 bg-gradient-to-r from-slate-50 to-blue-50 rounded-2xl border border-slate-200 text-left'>
+                  <div className='flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between'>
+                    <div>
+                      <h3 className='font-semibold text-slate-900 mb-2'>
+                        Live Detection Feed
+                      </h3>
+                      {detectedClasses.length > 0 ? (
+                        <div className='flex flex-wrap gap-2 mb-2'>
+                          {detectedClasses.map((detectedClass) => (
+                            <span
+                              key={detectedClass}
+                              className='px-2 py-1 text-xs bg-blue-100 text-blue-700 rounded-full'
+                            >
+                              {detectedClass}
+                            </span>
+                          ))}
+                        </div>
+                      ) : (
+                        <p className='text-sm text-slate-600 mb-2'>
+                          No target objects detected
+                        </p>
+                      )}
 
-                  {detectedClasses.length > 0 ? (
-                    <div className='flex flex-wrap gap-2 mb-2'>
-                      {detectedClasses.map((detectedClass) => (
-                        <span
-                          key={detectedClass}
-                          className='px-2 py-1 text-xs bg-blue-100 text-blue-700 rounded-full'
-                        >
-                          {detectedClass}
-                        </span>
-                      ))}
+                      {detectionViolations.length > 0 && (
+                        <p className='text-xs text-rose-600 mb-1'>
+                          {detectionViolations.join(', ')}
+                        </p>
+                      )}
                     </div>
-                  ) : (
-                    <p className='text-sm text-gray-600 mb-2'>
-                      No target objects detected
-                    </p>
-                  )}
 
-                  {detectionViolations.length > 0 && (
-                    <p className='text-xs text-red-600 mb-1'>
-                      {detectionViolations.join(', ')}
-                    </p>
-                  )}
-
-                  <p className='text-xs text-gray-500'>
-                    Detection score: {detectionScore} |{' '}
-                    {isDetectionRunning ? 'Monitoring every 5s' : 'Stopped'}
-                  </p>
+                    <div className='rounded-xl bg-white border border-slate-200 px-3 py-2 min-w-44'>
+                      <p className='text-xs text-slate-500'>Detection score</p>
+                      <p className='text-lg font-bold text-slate-900 leading-tight'>
+                        {detectionScore}
+                      </p>
+                      <p className='text-xs text-slate-500'>
+                        {isDetectionRunning ? 'Monitoring every 5s' : 'Stopped'}
+                      </p>
+                      <p className='text-xs text-slate-700 mt-2'>
+                        Focus: <strong>{candidateFocusStatus}</strong>
+                      </p>
+                    </div>
+                  </div>
                 </div>
               )}
             </div>
           </div>
-        </div>
 
-        {/* Focus Metrics Display */}
-        {trackingStatus !== 'inactive' && (
-          <div className='grid grid-cols-1 md:grid-cols-3 gap-4 mb-6'>
-            <div className='text-center p-4 bg-blue-50 rounded-xl'>
-              <div className='flex items-center justify-center gap-2 mb-2'>
-                <Eye className='h-5 w-5 text-blue-600' />
-                <span className='text-sm font-medium text-blue-600'>
-                  Eye Focus
-                </span>
-              </div>
-              <div className='text-2xl font-bold text-blue-600'>
-                {Math.round(
-                  (1 - focusMetrics.eyeMovement.distractionRate) * 100,
+          {/* AI Interviewer Panel */}
+          <div className='lg:col-span-4 lg:order-2 space-y-5'>
+            <div className='bg-white/95 rounded-3xl shadow-lg border border-white/60 ring-1 ring-slate-200/70 p-6'>
+              <div className='text-center'>
+                <div className='relative inline-block mb-4'>
+                  {!activeUser && (
+                    <div className='absolute inset-0 rounded-full bg-blue-500 opacity-75 animate-ping'></div>
+                  )}
+                  <div className='relative w-24 h-24 bg-gradient-to-br from-sky-500 to-indigo-600 rounded-full flex items-center justify-center shadow-md shadow-blue-500/20'>
+                    <Bot className='h-12 w-12 text-white' />
+                  </div>
+                  {!activeUser && (
+                    <div className='absolute -bottom-1 -right-1 w-7 h-7 bg-emerald-500 rounded-full flex items-center justify-center'>
+                      <Volume2 className='h-3.5 w-3.5 text-white' />
+                    </div>
+                  )}
+                </div>
+
+                <h2 className='text-xl font-bold text-slate-900 mb-1'>
+                  AI Recruiter
+                </h2>
+                <p className='text-sm text-slate-600 mb-4'>
+                  {activeUser
+                    ? 'Listening to your response'
+                    : 'Asking the next interview question'}
+                </p>
+
+                {!isCallActive && (
+                  <Button
+                    onClick={startCall}
+                    className='bg-gradient-to-r from-sky-600 to-indigo-600 hover:from-sky-700 hover:to-indigo-700 text-white px-6 py-2.5 text-base font-semibold shadow-md shadow-blue-500/20 hover:shadow-lg hover:shadow-blue-500/25 transition-all duration-200 hover:-translate-y-0.5'
+                  >
+                    <Play className='h-5 w-5 mr-2' />
+                    Start Interview
+                  </Button>
                 )}
               </div>
-              <div className='text-xs text-blue-600'>
-                {focusMetrics.eyeMovement.totalSamples} samples
+            </div>
+
+            <div className='bg-white/95 rounded-3xl shadow-lg border border-white/60 ring-1 ring-slate-200/70 p-5'>
+              <h3 className='font-semibold text-slate-900 mb-4'>
+                Integrity Dashboard
+              </h3>
+              <div className='space-y-3'>
+                <div className='rounded-xl border border-slate-200 p-3 bg-slate-50'>
+                  <div className='flex items-center justify-between text-sm mb-2'>
+                    <span className='text-slate-600 flex items-center gap-2'>
+                      <Eye className='h-4 w-4 text-sky-600' />
+                      Eye Focus
+                    </span>
+                    <span className='font-bold text-slate-900'>
+                      {eyeFocusPercent}%
+                    </span>
+                  </div>
+                  <div className='h-2 rounded-full bg-slate-200 overflow-hidden'>
+                    <div
+                      className='h-full bg-gradient-to-r from-cyan-500 to-blue-600'
+                      style={{ width: `${eyeFocusPercent}%` }}
+                    />
+                  </div>
+                </div>
+
+                <div className='rounded-xl border border-slate-200 p-3 bg-slate-50'>
+                  <div className='flex items-center justify-between text-sm mb-2'>
+                    <span className='text-slate-600 flex items-center gap-2'>
+                      <Monitor className='h-4 w-4 text-violet-600' />
+                      Tab Switches
+                    </span>
+                    <span className='font-bold text-slate-900'>
+                      {focusMetrics.tabSwitches.uiSwitchCount}/{maxTabSwitches}
+                    </span>
+                  </div>
+                  <div className='h-2 rounded-full bg-slate-200 overflow-hidden'>
+                    <div
+                      className='h-full bg-gradient-to-r from-violet-500 to-fuchsia-500'
+                      style={{
+                        width: `${Math.min((focusMetrics.tabSwitches.uiSwitchCount / maxTabSwitches) * 100, 100)}%`,
+                      }}
+                    />
+                  </div>
+                </div>
+
+                <div className='rounded-xl border border-slate-200 p-3 bg-slate-50'>
+                  <div className='flex items-center justify-between text-sm mb-2'>
+                    <span className='text-slate-600 flex items-center gap-2'>
+                      <Activity className='h-4 w-4 text-amber-600' />
+                      Screen Focus
+                    </span>
+                    <span className='font-bold text-slate-900'>
+                      {focusMetrics.screenFocus.percentage}%
+                    </span>
+                  </div>
+                  <div className='h-2 rounded-full bg-slate-200 overflow-hidden'>
+                    <div
+                      className='h-full bg-gradient-to-r from-amber-400 to-orange-500'
+                      style={{
+                        width: `${focusMetrics.screenFocus.percentage}%`,
+                      }}
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div className='mt-4 text-xs text-slate-500'>
+                Tracking status:{' '}
+                <span className='font-medium text-slate-700'>
+                  {trackingStatus}
+                </span>
               </div>
             </div>
 
-            <div className='text-center p-4 bg-purple-50 rounded-xl'>
-              <div className='flex items-center justify-center gap-2 mb-2'>
-                <Target className='h-5 w-5 text-purple-600' />
-                <span className='text-sm font-medium text-purple-600'>
-                  Tab Focus
-                </span>
-              </div>
-              <div className='text-2xl font-bold text-purple-600'>
-                {focusMetrics.tabSwitches.focusScore || 100}
-              </div>
-              <div
-                className={`text-xs ${focusMetrics.tabSwitches.uiSwitchCount >= maxTabSwitches ? 'text-red-600 font-semibold' : 'text-purple-600'}`}
-              >
-                {focusMetrics.tabSwitches.uiSwitchCount}/{maxTabSwitches}{' '}
-                switches
-              </div>
-            </div>
-
-            <div className='text-center p-4 bg-orange-50 rounded-xl'>
-              <div className='flex items-center justify-center gap-2 mb-2'>
-                <Activity className='h-5 w-5 text-orange-600' />
-                <span className='text-sm font-medium text-orange-600'>
-                  Screen Focus
-                </span>
-              </div>
-              <div className='text-lg font-bold text-orange-600'>
-                {focusMetrics.screenFocus.percentage}%
-              </div>
-              <div className='text-xs text-orange-600'>
-                {trackingStatus} tracking
+            <div className='bg-slate-900 text-white rounded-3xl shadow-lg p-5'>
+              <h3 className='font-semibold mb-3'>Session Snapshot</h3>
+              <div className='grid grid-cols-2 gap-3 text-sm'>
+                <div className='rounded-xl bg-white/10 p-3'>
+                  <p className='text-white/70 text-xs'>Duration</p>
+                  <p className='font-semibold'>{formatTime(callDuration)}</p>
+                </div>
+                <div className='rounded-xl bg-white/10 p-3'>
+                  <p className='text-white/70 text-xs'>Status</p>
+                  <p className='font-semibold'>
+                    {isCallActive ? 'Live interview' : 'Waiting to start'}
+                  </p>
+                </div>
+                <div className='rounded-xl bg-white/10 p-3'>
+                  <p className='text-white/70 text-xs'>Focus</p>
+                  <p className='font-semibold'>{candidateFocusStatus}</p>
+                </div>
+                <div className='rounded-xl bg-white/10 p-3'>
+                  <p className='text-white/70 text-xs'>Switches</p>
+                  <p className='font-semibold'>
+                    {focusMetrics.tabSwitches.uiSwitchCount}/{maxTabSwitches}
+                  </p>
+                </div>
               </div>
             </div>
           </div>
-        )}
+        </div>
 
         {/* Test Controls for Development - DISABLED */}
 
         {/* Interview Progress */}
         {isCallActive && (
-          <div className='mt-8 bg-white rounded-2xl shadow-lg border border-gray-100 p-6'>
-            <h3 className='text-lg font-semibold text-gray-900 mb-4 text-center'>
+          <div className='mt-7 bg-white/95 rounded-2xl shadow-lg border border-white/60 ring-1 ring-slate-200/70 p-6'>
+            <h3 className='text-lg font-semibold text-slate-900 mb-4 text-center'>
               Interview Progress
             </h3>
             <div className='grid grid-cols-1 md:grid-cols-3 gap-4'>
-              <div className='text-center p-4 bg-blue-50 rounded-xl'>
-                <div className='text-2xl font-bold text-blue-600'>
+              <div className='text-center p-4 bg-sky-50 rounded-xl border border-sky-100'>
+                <div className='text-2xl font-bold text-sky-700'>
                   {currentQuestion}
                 </div>
-                <div className='text-sm text-blue-600'>Questions Asked</div>
+                <div className='text-sm text-sky-700'>Questions Asked</div>
               </div>
-              <div className='text-center p-4 bg-green-50 rounded-xl'>
-                <div className='text-2xl font-bold text-green-600'>
+              <div className='text-center p-4 bg-emerald-50 rounded-xl border border-emerald-100'>
+                <div className='text-2xl font-bold text-emerald-700'>
                   {totalQuestions - currentQuestion}
                 </div>
-                <div className='text-sm text-green-600'>Remaining</div>
+                <div className='text-sm text-emerald-700'>Remaining</div>
               </div>
-              <div className='text-center p-4 bg-purple-50 rounded-xl'>
-                <div className='text-2xl font-bold text-purple-600'>
+              <div className='text-center p-4 bg-indigo-50 rounded-xl border border-indigo-100'>
+                <div className='text-2xl font-bold text-indigo-700'>
                   {Math.round(interviewProgress)}%
                 </div>
-                <div className='text-sm text-purple-600'>Complete</div>
+                <div className='text-sm text-indigo-700'>Complete</div>
               </div>
             </div>
           </div>
         )}
 
         {/* Control Panel */}
-        <div className='mt-8 bg-white rounded-2xl shadow-lg border border-gray-100 p-6'>
-          <div className='flex items-center justify-center gap-4'>
+        <div className='mt-7 bg-white/95 rounded-2xl shadow-lg border border-white/60 ring-1 ring-slate-200/70 p-6'>
+          <div className='grid grid-cols-3 sm:grid-cols-4 gap-4 place-items-center'>
             {/* Mute/Unmute */}
-            <Button
-              onClick={toggleMute}
-              variant={isMuted ? 'destructive' : 'outline'}
-              size='lg'
-              className={`h-16 w-16 rounded-full ${
-                isMuted
-                  ? 'bg-red-500 hover:bg-red-600 text-white'
-                  : 'border-gray-300 hover:bg-gray-50'
-              }`}
-            >
-              {isMuted ? (
-                <MicOff className='h-6 w-6' />
-              ) : (
-                <Mic className='h-6 w-6' />
-              )}
-            </Button>
+            <div className='text-center'>
+              <Button
+                onClick={toggleMute}
+                variant={isMuted ? 'destructive' : 'outline'}
+                size='lg'
+                className={`h-16 w-16 rounded-full ${
+                  isMuted
+                    ? 'bg-red-500 hover:bg-red-600 text-white'
+                    : 'border-slate-300 hover:bg-slate-50'
+                }`}
+              >
+                {isMuted ? (
+                  <MicOff className='h-6 w-6' />
+                ) : (
+                  <Mic className='h-6 w-6' />
+                )}
+              </Button>
+              <p className='text-xs text-slate-600 mt-2'>Mic</p>
+            </div>
 
             {/* Video Toggle */}
-            <Button
-              onClick={toggleVideo}
-              variant={isVideoOn ? 'outline' : 'destructive'}
-              size='lg'
-              className={`h-16 w-16 rounded-full ${
-                isVideoOn
-                  ? 'border-gray-300 hover:bg-gray-50'
-                  : 'bg-red-500 hover:bg-red-600 text-white'
-              }`}
-            >
-              {isVideoOn ? (
-                <Video className='h-6 w-6' />
-              ) : (
-                <VideoOff className='h-6 w-6' />
-              )}
-            </Button>
+            <div className='text-center'>
+              <Button
+                onClick={toggleVideo}
+                variant={isVideoOn ? 'outline' : 'destructive'}
+                size='lg'
+                className={`h-16 w-16 rounded-full ${
+                  isVideoOn
+                    ? 'border-slate-300 hover:bg-slate-50'
+                    : 'bg-red-500 hover:bg-red-600 text-white'
+                }`}
+              >
+                {isVideoOn ? (
+                  <Video className='h-6 w-6' />
+                ) : (
+                  <VideoOff className='h-6 w-6' />
+                )}
+              </Button>
+              <p className='text-xs text-slate-600 mt-2'>Camera</p>
+            </div>
 
             {/* Speaker Toggle */}
-            <Button
-              onClick={toggleSpeaker}
-              variant='outline'
-              size='lg'
-              className={`h-16 w-16 rounded-full border-gray-300 hover:bg-gray-50 ${
-                !isSpeakerOn ? 'bg-gray-100' : ''
-              }`}
-            >
-              {isSpeakerOn ? (
-                <Volume2 className='h-6 w-6' />
-              ) : (
-                <VolumeX className='h-6 w-6' />
-              )}
-            </Button>
+            <div className='text-center'>
+              <Button
+                onClick={toggleSpeaker}
+                variant='outline'
+                size='lg'
+                className={`h-16 w-16 rounded-full border-slate-300 hover:bg-slate-50 ${
+                  !isSpeakerOn ? 'bg-slate-100' : ''
+                }`}
+              >
+                {isSpeakerOn ? (
+                  <Volume2 className='h-6 w-6' />
+                ) : (
+                  <VolumeX className='h-6 w-6' />
+                )}
+              </Button>
+              <p className='text-xs text-slate-600 mt-2'>Speaker</p>
+            </div>
 
             {/* End Call */}
             {isCallActive && (
-              <AlertConfirmation stopInterview={stopInterview}>
-                <Button
-                  variant='destructive'
-                  size='lg'
-                  className='h-16 w-16 rounded-full bg-red-500 hover:bg-red-600 text-white'
-                >
-                  <PhoneOff className='h-6 w-6' />
-                </Button>
-              </AlertConfirmation>
+              <div className='text-center'>
+                <AlertConfirmation stopInterview={stopInterview}>
+                  <Button
+                    variant='destructive'
+                    size='lg'
+                    className='h-16 w-16 rounded-full bg-red-500 hover:bg-red-600 text-white'
+                  >
+                    <PhoneOff className='h-6 w-6' />
+                  </Button>
+                </AlertConfirmation>
+                <p className='text-xs text-slate-600 mt-2'>End</p>
+              </div>
             )}
           </div>
 
           {/* Status Messages */}
           <div className='text-center mt-6'>
             {!isCallActive && (
-              <p className='text-gray-500'>
+              <p className='text-slate-500'>
                 Click "Start Interview" to begin your AI-powered interview
                 session
               </p>
             )}
             {isCallActive && (
-              <p className='text-green-600 font-medium'>
+              <p className='text-emerald-600 font-medium'>
                 Interview is in progress - Speak clearly and naturally
               </p>
             )}
@@ -1432,14 +1650,14 @@ Keep responses concise and natural. Focus on making the candidate comfortable wh
         </div>
 
         {/* Help Section */}
-        <div className='mt-8 bg-blue-50 border border-blue-200 rounded-2xl p-6'>
+        <div className='mt-7 bg-gradient-to-r from-cyan-50 to-indigo-50 border border-cyan-200/70 rounded-2xl p-6 shadow-sm'>
           <div className='flex items-start gap-3'>
-            <MessageCircle className='h-6 w-6 text-blue-600 mt-1 flex-shrink-0' />
+            <MessageCircle className='h-6 w-6 text-cyan-700 mt-1 flex-shrink-0' />
             <div>
-              <h3 className='font-semibold text-blue-900 mb-2'>
-                Interview Tips
+              <h3 className='font-semibold text-slate-900 mb-2'>
+                Interview Best Practices
               </h3>
-              <ul className='text-sm text-blue-800 space-y-1'>
+              <ul className='text-sm text-slate-700 space-y-1'>
                 <li>• Speak clearly and at a moderate pace</li>
                 <li>• Take your time to think before answering</li>
                 <li>• Provide specific examples when possible</li>

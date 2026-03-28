@@ -1,13 +1,16 @@
-# Backend Object Detection Service
+# Backend Object + Gaze Detection Service
 
-FastAPI service for interview monitoring using YOLOv8 and OpenCV.
+FastAPI service for interview monitoring using YOLOv8, OpenCV, and MediaPipe.
 
-This backend exposes a single endpoint, `POST /detect`, that receives an image frame and returns detected classes plus simple rule-based violations.
+This backend exposes a single endpoint, `POST /detect`, that receives an image frame and returns object detections, hybrid gaze tracking signals, and rule-based violations.
 
 ## Features
 
 - YOLOv8 object detection (`person`, `book`, `cell phone`)
 - Face presence check using OpenCV Haar Cascade
+- Hybrid gaze tracking:
+  - MediaPipe Face Mesh for facial landmarks + coarse head pose
+  - MediaPipe Iris landmarks for gaze direction estimation
 - Violation scoring for interview monitoring
 - CORS enabled for local frontend integration
 
@@ -84,6 +87,18 @@ Example response:
   "phone_count": 1,
   "book_count": 0,
   "face_present": true,
+  "gaze": {
+    "direction": "center",
+    "is_focused": true,
+    "confidence": 0.83,
+    "method": "mediapipe",
+    "head_centered": true
+  },
+  "head_pose": {
+    "yaw": 4.2,
+    "pitch": -2.1,
+    "roll": 1.4
+  },
   "violations": ["Phone detected"],
   "score": 30
 }
@@ -95,8 +110,16 @@ Example response:
 - `+30` if any cell phone is detected
 - `+20` if any book is detected
 - `+25` if no face is visible
+- `+10` if gaze/head are not centered
 
 Higher score indicates more potential interview violations.
+
+## Gaze Tracking Details
+
+- `gaze.direction`: estimated eye direction (`left`, `right`, `up`, `down`, `center`, `unknown`)
+- `gaze.is_focused`: true when single person, head is centered, and iris direction is centered
+- `gaze.confidence`: confidence of gaze estimate
+- `head_pose`: coarse Euler angles (yaw, pitch, roll) from Face Mesh landmarks
 
 ## Frontend Integration
 

@@ -11,6 +11,7 @@ class InterviewTrackingService {
         distractions: 0,
         totalSamples: 0,
         focusTime: 0,
+        lastStatus: 'unknown',
       },
       tabSwitches: {
         count: 0,
@@ -18,6 +19,7 @@ class InterviewTrackingService {
         totalTimeAway: 0,
         lastSwitchTime: Date.now(),
         isCurrentlyAway: false,
+        awayStartedAt: null,
       },
       screenFocus: {
         percentage: 100,
@@ -37,7 +39,6 @@ class InterviewTrackingService {
 
     try {
       this.isTracking = true
-      this.startEyeTracking()
       this.startTabMonitoring()
       this.startFocusMonitoring()
 
@@ -57,7 +58,19 @@ class InterviewTrackingService {
 
     try {
       this.isTracking = false
-      this.stopEyeTracking()
+
+      // If tracking stops while user is away, account for pending away duration.
+      if (
+        this.focusMetrics.tabSwitches.isCurrentlyAway &&
+        this.focusMetrics.tabSwitches.awayStartedAt
+      ) {
+        const pendingAway = Math.max(
+          0,
+          Date.now() - this.focusMetrics.tabSwitches.awayStartedAt,
+        )
+        this.focusMetrics.tabSwitches.totalTimeAway += pendingAway
+      }
+
       this.stopTabMonitoring()
       this.stopFocusMonitoring()
 
@@ -67,120 +80,32 @@ class InterviewTrackingService {
     }
   }
 
-  // Eye tracking simulation (in real implementation, this would use webcam + ML)
-  startEyeTracking() {
-    this.eyeTrackingInterval = setInterval(() => {
-      if (!this.isTracking) return
-
-      // Simulate eye tracking data (replace with actual webcam tracking)
-      const eyeData = this.simulateEyeTracking()
-      this.trackEyeMovement(eyeData)
-    }, 1000) // Sample every second
-  }
-
-  stopEyeTracking() {
-    if (this.eyeTrackingInterval) {
-      clearInterval(this.eyeTrackingInterval)
-      this.eyeTrackingInterval = null
-    }
-  }
-
-  // Simulate eye tracking (replace with actual implementation)
-  simulateEyeTracking() {
-    const screenWidth = window.innerWidth
-    const screenHeight = window.innerHeight
-
-    // Simulate gaze position (center-focused with some variation)
-    const centerX = screenWidth / 2
-    const centerY = screenHeight / 2
-
-    // Add some realistic variation
-    const variationX = (Math.random() - 0.5) * 200
-    const variationY = (Math.random() - 0.5) * 200
-
-    const gazeX = centerX + variationX
-    const gazeY = centerY + variationY
-
-    // Simulate confidence (higher when closer to center)
-    const distanceFromCenter = Math.sqrt(
-      Math.pow(gazeX - centerX, 2) + Math.pow(gazeY - centerY, 2),
-    )
-    const confidence = Math.max(0.3, 1 - distanceFromCenter / 500)
-
-    return {
-      gazeX,
-      gazeY,
-      screenWidth,
-      screenHeight,
-      confidence,
-      timestamp: Date.now(),
-    }
-  }
-
-  // Track eye movement and send to API
-  async trackEyeMovement(eyeData) {
+  // Update gaze/focus observations using real camera analysis.
+  // Expected input comes from object detection responses in the interview page.
+  updateGazeObservation({ facePresent = true, personCount = 1 } = {}) {
     if (!this.isTracking) return
 
-    // Determine if gaze is on screen
-    const isOnScreen =
-      eyeData.gazeX >= 0 &&
-      eyeData.gazeX <= eyeData.screenWidth &&
-      eyeData.gazeY >= 0 &&
-      eyeData.gazeY <= eyeData.screenHeight
-
-    // Determine gaze direction
-    let gazeDirection = 'center'
-    const normalizedX = eyeData.gazeX / eyeData.screenWidth
-    const normalizedY = eyeData.gazeY / eyeData.screenHeight
-
-    if (normalizedX < 0.35) gazeDirection = 'left'
-    else if (normalizedX > 0.65) gazeDirection = 'right'
-    else if (normalizedY < 0.35) gazeDirection = 'up'
-    else if (normalizedY > 0.65) gazeDirection = 'down'
-
-    const processedData = {
-      isOnScreen,
-      gazeDirection,
-      confidence: eyeData.confidence,
-      distanceFromCenter: Math.sqrt(
-        Math.pow(eyeData.gazeX - eyeData.screenWidth / 2, 2) +
-          Math.pow(eyeData.gazeY - eyeData.screenHeight / 2, 2),
-      ),
+    // Eye focus should reflect on-screen behavior while the candidate is
+    // actually on the interview tab. Tab-away time is tracked separately.
+    if (this.focusMetrics.tabSwitches.isCurrentlyAway) {
+      this.focusMetrics.eyeMovement.lastStatus = 'away'
+      return
     }
 
-    this.updateFocusMetrics(processedData)
-
-    try {
-      // Send to Next.js API which forwards to FastAPI backend
-      const response = await fetch('/api/gaze', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          interview_id: this.interviewId,
-          candidate_id: this.candidateId,
-          gaze_x: normalizedX,
-          gaze_y: normalizedY,
-          gaze_direction: gazeDirection,
-          confidence: eyeData.confidence,
-          is_looking_at_screen: isOnScreen,
-          timestamp: new Date().toISOString(),
-        }),
-      })
-
-      if (response.ok) {
-        const result = await response.json()
-        this.updateFocusMetrics(result.backend_response?.data || processedData)
-      }
-    } catch (error) {
-      console.error('Failed to track eye movement:', error)
-    }
+    const isOnScreen = Boolean(facePresent) && Number(personCount) === 1
+    this.updateFocusMetrics({ isOnScreen })
+    this.focusMetrics.eyeMovement.lastStatus = isOnScreen
+      ? 'focused'
+      : 'needs_attention'
   }
 
   // Tab switch monitoring
   startTabMonitoring() {
     try {
+      if (typeof document === 'undefined' || typeof window === 'undefined') {
+        return
+      }
+
       // Track when user switches away from the interview tab
       const handleVisibilityChange = () => {
         if (document.hidden) {
@@ -188,11 +113,6 @@ class InterviewTrackingService {
         } else {
           this.handleTabSwitch('switch_back')
         }
-      }
-
-      // Track when user opens new tabs or navigates away
-      const handleBeforeUnload = () => {
-        this.handleTabSwitch('new_tab')
       }
 
       // Track when window loses focus
@@ -205,13 +125,15 @@ class InterviewTrackingService {
       }
 
       document.addEventListener('visibilitychange', handleVisibilityChange)
-      window.addEventListener('beforeunload', handleBeforeUnload)
       window.addEventListener('blur', handleBlur)
       window.addEventListener('focus', handleFocus)
 
       this.tabSwitchListeners = [
-        { type: 'visibilitychange', handler: handleVisibilityChange },
-        { type: 'beforeunload', handler: handleBeforeUnload },
+        {
+          target: 'document',
+          type: 'visibilitychange',
+          handler: handleVisibilityChange,
+        },
         { type: 'blur', handler: handleBlur },
         { type: 'focus', handler: handleFocus },
       ]
@@ -224,9 +146,9 @@ class InterviewTrackingService {
 
   stopTabMonitoring() {
     try {
-      this.tabSwitchListeners.forEach(({ type, handler }) => {
-        if (type === 'beforeunload') {
-          window.removeEventListener(type, handler)
+      this.tabSwitchListeners.forEach(({ target, type, handler }) => {
+        if (target === 'document') {
+          document.removeEventListener(type, handler)
         } else {
           window.removeEventListener(type, handler)
         }
@@ -243,26 +165,40 @@ class InterviewTrackingService {
     if (!this.isTracking) return
 
     const now = Date.now()
-    const timeSpent = now - this.focusMetrics.tabSwitches.lastSwitchTime
+    const wasAway = this.focusMetrics.tabSwitches.isCurrentlyAway
+    const isAwayEvent =
+      eventType === 'switch_away' || eventType === 'window_blur'
+    const isBackEvent =
+      eventType === 'switch_back' || eventType === 'window_focus'
 
-    console.log(`Tab switch event: ${eventType}, time spent: ${timeSpent}ms`)
+    let timeSpent = 0
 
-    // Update local metrics immediately for real-time updates
-    if (eventType === 'switch_away' || eventType === 'window_blur') {
+    // Only count away transitions once to avoid duplicate visibility/blur events.
+    if (isAwayEvent && !wasAway) {
       this.focusMetrics.tabSwitches.isCurrentlyAway = true
-      this.focusMetrics.tabSwitches.uiSwitchCount++
+      this.focusMetrics.tabSwitches.uiSwitchCount += 1
+      this.focusMetrics.tabSwitches.awayStartedAt = now
       this.focusMetrics.tabSwitches.lastSwitchTime = now
       console.log('User switched away from interview')
-    } else if (eventType === 'switch_back' || eventType === 'window_focus') {
-      if (this.focusMetrics.tabSwitches.isCurrentlyAway) {
-        this.focusMetrics.tabSwitches.count++
-        this.focusMetrics.tabSwitches.totalTimeAway += timeSpent
-        this.focusMetrics.tabSwitches.isCurrentlyAway = false
-        console.log(
-          `User returned to interview after ${timeSpent}ms, total switches: ${this.focusMetrics.tabSwitches.count}`,
-        )
-      }
+    }
+
+    // Only count back transitions once to avoid duplicate focus/visibility events.
+    if (isBackEvent && wasAway) {
+      const awayStartedAt = this.focusMetrics.tabSwitches.awayStartedAt || now
+      timeSpent = Math.max(0, now - awayStartedAt)
+      this.focusMetrics.tabSwitches.count += 1
+      this.focusMetrics.tabSwitches.totalTimeAway += timeSpent
+      this.focusMetrics.tabSwitches.isCurrentlyAway = false
+      this.focusMetrics.tabSwitches.awayStartedAt = null
       this.focusMetrics.tabSwitches.lastSwitchTime = now
+
+      console.log(
+        `User returned to interview after ${timeSpent}ms, total switches: ${this.focusMetrics.tabSwitches.count}`,
+      )
+    }
+
+    if ((isAwayEvent && wasAway) || (isBackEvent && !wasAway)) {
+      return
     }
 
     const tabData = {
@@ -275,25 +211,27 @@ class InterviewTrackingService {
 
     try {
       // Send to FastAPI backend via Next.js API
-      const response = await fetch('/api/gaze', {
+      const response = await fetch('/api/tab-monitoring', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          interview_id: this.interviewId,
-          candidate_id: this.candidateId,
-          tab_title: document.title,
-          tab_url: window.location.href,
-          time_spent: timeSpent,
-          event_type: eventType,
+          interviewId: this.interviewId,
+          candidateId: this.candidateId,
+          tabData: {
+            eventType: tabData.eventType,
+            timeSpent: tabData.timeSpent,
+            tabTitle: tabData.title,
+            tabUrl: tabData.url,
+          },
           timestamp: new Date().toISOString(),
         }),
       })
 
       if (response.ok) {
         const result = await response.json()
-        this.updateTabMetrics(result.backend_response?.data || tabData)
+        this.updateTabMetrics(result.processedData || tabData)
         console.log('Tab switch data sent to API successfully')
       }
     } catch (error) {
@@ -312,8 +250,8 @@ class InterviewTrackingService {
 
         try {
           const totalTime = Date.now() - this.focusMetrics.screenFocus.startTime
-          const focusTime =
-            totalTime - this.focusMetrics.tabSwitches.totalTimeAway
+          const effectiveTimeAway = this.getEffectiveTotalTimeAway()
+          const focusTime = totalTime - effectiveTimeAway
           this.focusMetrics.screenFocus.percentage = Math.max(
             0,
             (focusTime / totalTime) * 100,
@@ -323,7 +261,7 @@ class InterviewTrackingService {
             `Focus update - Total time: ${Math.round(
               totalTime / 1000,
             )}s, Time away: ${Math.round(
-              this.focusMetrics.tabSwitches.totalTimeAway / 1000,
+              effectiveTimeAway / 1000,
             )}s, Focus: ${Math.round(
               this.focusMetrics.screenFocus.percentage,
             )}%`,
@@ -353,7 +291,7 @@ class InterviewTrackingService {
 
   // Update focus metrics based on tracking data
   updateFocusMetrics(eyeData) {
-    if (eyeData.isOnScreen === false) {
+    if (eyeData?.isOnScreen === false) {
       this.focusMetrics.eyeMovement.distractions++
     }
     this.focusMetrics.eyeMovement.totalSamples++
@@ -361,10 +299,19 @@ class InterviewTrackingService {
 
   // Update tab metrics
   updateTabMetrics(tabData) {
-    if (tabData.isDistraction) {
-      this.focusMetrics.tabSwitches.count++
-      this.focusMetrics.tabSwitches.totalTimeAway += tabData.timeSpent
-    }
+    // Local tab state is already authoritative. Keep this for API compatibility.
+    if (!tabData) return
+  }
+
+  getEffectiveTotalTimeAway() {
+    const baseAwayTime = this.focusMetrics.tabSwitches.totalTimeAway
+    const currentAwayTime =
+      this.focusMetrics.tabSwitches.isCurrentlyAway &&
+      this.focusMetrics.tabSwitches.awayStartedAt
+        ? Math.max(0, Date.now() - this.focusMetrics.tabSwitches.awayStartedAt)
+        : 0
+
+    return baseAwayTime + currentAwayTime
   }
 
   // Record candidate answers
@@ -417,16 +364,25 @@ class InterviewTrackingService {
 
   // Get current focus metrics
   getFocusMetrics() {
+    const effectiveTimeAway = this.getEffectiveTotalTimeAway()
+    const totalTrackedTime = Math.max(
+      1,
+      Date.now() - this.focusMetrics.screenFocus.startTime,
+    )
+
     // Calculate focus score based on tab switches and time away
     const tabSwitchScore = Math.max(
       0,
       100 - this.focusMetrics.tabSwitches.count * 10,
     )
-    const timeAwayScore = Math.max(
-      0,
-      100 - (this.focusMetrics.tabSwitches.totalTimeAway / 1000) * 2,
-    )
+    const timeAwayScore = Math.max(0, 100 - (effectiveTimeAway / 1000) * 2)
     const overallFocusScore = Math.round((tabSwitchScore + timeAwayScore) / 2)
+    const realTimeScreenFocusPercentage = Math.max(
+      0,
+      Math.round(
+        ((totalTrackedTime - effectiveTimeAway) / totalTrackedTime) * 100,
+      ),
+    )
 
     return {
       ...this.focusMetrics,
@@ -440,11 +396,12 @@ class InterviewTrackingService {
       },
       tabSwitches: {
         ...this.focusMetrics.tabSwitches,
+        totalTimeAway: effectiveTimeAway,
         focusScore: overallFocusScore,
       },
       screenFocus: {
         ...this.focusMetrics.screenFocus,
-        percentage: Math.round(this.focusMetrics.screenFocus.percentage),
+        percentage: realTimeScreenFocusPercentage,
       },
     }
   }

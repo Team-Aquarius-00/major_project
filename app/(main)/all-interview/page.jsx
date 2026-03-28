@@ -45,6 +45,7 @@ export default function AllInterviews() {
         // Transform the data to match the expected format
         const transformedData = response.data.data.map((interview) => ({
           id: interview.id,
+          interviewId: interview.interview_id || String(interview.id),
           candidateName: 'Candidate', // Since we don't have candidate name in our schema
           position: interview.job_position || 'Not specified',
           company: 'Company', // Since we don't have company in our schema
@@ -107,6 +108,7 @@ export default function AllInterviews() {
     const matchesSearch =
       interview.position.toLowerCase().includes(searchTerm.toLowerCase()) ||
       interview.type.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      interview.interviewId.toString().includes(searchTerm) ||
       interview.id.toString().includes(searchTerm)
     const matchesFilter =
       filterStatus === 'all' || interview.status === filterStatus
@@ -217,10 +219,10 @@ export default function AllInterviews() {
                           </div>
                           <div className='ml-3'>
                             <p className='text-sm font-medium text-gray-900'>
-                              Interview #{interview.id}
+                              Interview #{interview.interviewId}
                             </p>
                             <p className='text-sm text-gray-500'>
-                              ID: {interview.id}
+                              DB ID: {interview.id}
                             </p>
                           </div>
                         </div>
@@ -265,13 +267,16 @@ export default function AllInterviews() {
                       </td>
                       <td className='px-6 py-4'>
                         <div className='flex items-center gap-2'>
-                          <Button
-                            size='sm'
-                            variant='ghost'
-                            className='h-8 w-8 p-0 hover:bg-blue-50 hover:text-blue-600'
-                          >
-                            <Eye className='h-4 w-4' />
-                          </Button>
+                          <Link href={`/interview/${interview.interviewId}`}>
+                            <Button
+                              size='sm'
+                              variant='ghost'
+                              className='h-8 px-3 hover:bg-blue-50 hover:text-blue-600'
+                            >
+                              <Eye className='h-4 w-4 mr-1' />
+                              Link
+                            </Button>
+                          </Link>
                           <Button
                             size='sm'
                             variant='ghost'

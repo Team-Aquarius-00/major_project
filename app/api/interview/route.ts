@@ -82,10 +82,12 @@ export async function GET(request: NextRequest) {
       where: userEmail ? { adminEmail: userEmail } : {},
       select: {
         id: true,
+        interview_id: true,
         job_position: true,
         type: true,
         created_at: true,
         duration: true,
+        completed: true,
       },
     })
 
