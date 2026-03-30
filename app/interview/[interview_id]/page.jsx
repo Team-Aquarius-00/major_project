@@ -256,7 +256,7 @@ function Interview() {
 
               <div className='mb-6'>
                 <label className='block text-sm font-medium text-gray-700 mb-2 text-center'>
-                  Email (optional)
+                  Email
                 </label>
                 <Input
                   placeholder='hari123@gmail.com'

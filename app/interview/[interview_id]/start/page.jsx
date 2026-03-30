@@ -44,8 +44,8 @@ import InterviewFeedback from './_components/InterviewFeedback'
 import { useInterviewAlerts } from '@/hooks/useInterviewAlerts'
 import { InterviewAlerts } from '@/components/InterviewAlerts'
 
-// Testing toggle: disable all Vapi methods to validate gaze/focus tracking only.
-const DISABLE_VAPI_FOR_TESTING = true
+// Keep false to run the real Vapi voice interview flow.
+const DISABLE_VAPI_FOR_TESTING = false
 
 function StartInterview() {
   const { interviewInfo, setInterviewInfo } = useContext(InterviewDataContext)
@@ -87,6 +87,7 @@ function StartInterview() {
   const [currentAnswer, setCurrentAnswer] = useState('')
   const [conversationLog, setConversationLog] = useState([])
   const [qaPairs, setQaPairs] = useState([])
+  const [answerAnalyses, setAnswerAnalyses] = useState({})
   const [showFeedback, setShowFeedback] = useState(false)
   const [detectedClasses, setDetectedClasses] = useState([])
   const [detectionViolations, setDetectionViolations] = useState([])
@@ -115,7 +116,11 @@ function StartInterview() {
   const trackingServiceRef = useRef(null)
   const qaPairsRef = useRef([])
   const conversationLogRef = useRef([])
+  const answerAnalysesRef = useRef({})
   const autoStoppedByTabLimitRef = useRef(false)
+  const lastAssistantQuestionRef = useRef('')
+  const lastAssistantQuestionAtRef = useRef(0)
+  const answerAnalysisDebounceRef = useRef(null)
 
   const resetDetectionMetrics = () => {
     setDetectionScore(0)
@@ -240,6 +245,18 @@ function StartInterview() {
   useEffect(() => {
     conversationLogRef.current = conversationLog
   }, [conversationLog])
+
+  useEffect(() => {
+    answerAnalysesRef.current = answerAnalyses
+  }, [answerAnalyses])
+
+  useEffect(() => {
+    return () => {
+      if (answerAnalysisDebounceRef.current) {
+        clearTimeout(answerAnalysisDebounceRef.current)
+      }
+    }
+  }, [])
 
   const stopLiveDetection = () => {
     if (detectionIntervalRef.current) {
@@ -644,11 +661,43 @@ function StartInterview() {
     )
   }
 
-  const assignAssistantQuestion = (text) => {
-    const questions = interviewInfo?.interviewData?.questionList || []
-    const nextQuestionIndex = currentQuestionRef.current
+  const isPotentialDuplicateQuestion = (previousText, nextText) => {
+    const previous = normalizeText(previousText)
+    const next = normalizeText(nextText)
 
-    if (!isLikelyQuestion(text) || nextQuestionIndex >= questions.length) {
+    if (!previous || !next) return false
+    if (previous === next) return true
+    if (previous.includes(next) || next.includes(previous)) return true
+
+    return false
+  }
+
+  const assignAssistantQuestion = (text) => {
+    const normalizedIncoming = normalizeText(text)
+    const questions = interviewInfo?.interviewData?.questionList || []
+
+    if (!isLikelyQuestion(text)) {
+      return
+    }
+
+    // Vapi emits multiple assistant message chunks for the same utterance.
+    // Ignore near-duplicate question messages to prevent progress jumps.
+    const now = Date.now()
+    if (
+      isPotentialDuplicateQuestion(
+        lastAssistantQuestionRef.current,
+        normalizedIncoming,
+      ) &&
+      now - lastAssistantQuestionAtRef.current < 10000
+    ) {
+      return
+    }
+
+    const existingPairs = qaPairsRef.current || []
+    const askedPairs = existingPairs.filter((pair) => pair?.askedByAssistant)
+    const nextQuestionIndex = askedPairs.length
+
+    if (nextQuestionIndex >= questions.length) {
       return
     }
 
@@ -656,57 +705,144 @@ function StartInterview() {
       questions[nextQuestionIndex]?.question ||
       `Question ${nextQuestionIndex + 1}`
 
-    setQaPairs((prev) => {
-      if (prev[nextQuestionIndex]) return prev
-
-      const updated = [...prev]
-      updated[nextQuestionIndex] = {
+    const updated = [
+      ...existingPairs,
+      {
         questionNumber: nextQuestionIndex + 1,
         configuredQuestion,
         askedByAssistant: text,
         answer: '',
         askedAt: new Date().toISOString(),
-      }
+      },
+    ]
 
-      return updated
-    })
+    qaPairsRef.current = updated
+    setQaPairs(updated)
 
-    setCurrentQuestion((prev) => {
-      const newQuestionCount = Math.min(prev + 1, questions.length)
-      setInterviewProgress(
-        (newQuestionCount / Math.max(questions.length, 1)) * 100,
-      )
-      return newQuestionCount
-    })
+    const newQuestionCount = Math.min(nextQuestionIndex + 1, questions.length)
+    setCurrentQuestion(newQuestionCount)
+    setInterviewProgress(
+      (newQuestionCount / Math.max(questions.length, 1)) * 100,
+    )
+
+    lastAssistantQuestionRef.current = normalizedIncoming
+    lastAssistantQuestionAtRef.current = now
   }
 
   const assignUserAnswer = (text) => {
     if (!text.trim()) return
 
     setCurrentAnswer(text)
-    setQaPairs((prev) => {
-      const updated = [...prev]
+    const existingPairs = qaPairsRef.current || []
 
-      if (!updated.length) {
-        updated.push({
-          questionNumber: 1,
-          configuredQuestion: 'Opening response',
-          askedByAssistant: '',
-          answer: text,
-          answeredAt: new Date().toISOString(),
-        })
-        return updated
+    if (!existingPairs.length) {
+      return
+    }
+
+    const lastAskedIndex = [...existingPairs]
+      .map((pair, index) => ({ pair, index }))
+      .reverse()
+      .find((entry) => entry?.pair?.askedByAssistant)?.index
+
+    if (typeof lastAskedIndex !== 'number') {
+      return
+    }
+
+    const updated = [...existingPairs]
+    updated[lastAskedIndex] = {
+      ...updated[lastAskedIndex],
+      answer: mergeTranscriptText(updated[lastAskedIndex]?.answer, text),
+      answeredAt: new Date().toISOString(),
+    }
+
+    qaPairsRef.current = updated
+    setQaPairs(updated)
+
+    const pairForAnalysis = updated[lastAskedIndex]
+    queueAnswerAnalysis(pairForAnalysis)
+  }
+
+  const upsertAnswerAnalysis = (analysis) => {
+    const questionNumber = Number(analysis?.questionNumber || 0)
+    if (!questionNumber) return
+
+    setAnswerAnalyses((prev) => ({
+      ...prev,
+      [questionNumber]: {
+        questionNumber,
+        score: Number(analysis?.score || 0),
+        summary: String(analysis?.summary || ''),
+        strengths: Array.isArray(analysis?.strengths) ? analysis.strengths : [],
+        improvements: Array.isArray(analysis?.improvements)
+          ? analysis.improvements
+          : [],
+        updatedAt: new Date().toISOString(),
+      },
+    }))
+  }
+
+  const analyzeSingleAnswer = async (pair) => {
+    const answer = String(pair?.answer || '').trim()
+    if (!answer || answer.length < 12) {
+      return
+    }
+
+    try {
+      const response = await fetch(
+        `/api/interview/${interview_id}/analyze-answer`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            questionNumber: pair?.questionNumber,
+            question: pair?.configuredQuestion || pair?.askedByAssistant || '',
+            answer,
+            jobPosition:
+              interviewInfo?.interviewData?.job_position ||
+              interviewInfo?.interviewData?.jobPosition ||
+              '',
+          }),
+        },
+      )
+
+      if (!response.ok) {
+        return
       }
 
-      const lastIndex = updated.length - 1
-      updated[lastIndex] = {
-        ...updated[lastIndex],
-        answer: mergeTranscriptText(updated[lastIndex]?.answer, text),
-        answeredAt: new Date().toISOString(),
-      }
+      const analysis = await response.json()
+      upsertAnswerAnalysis(analysis)
+    } catch (analysisError) {
+      console.debug('Single answer analysis skipped:', analysisError)
+    }
+  }
 
-      return updated
-    })
+  const queueAnswerAnalysis = (pair) => {
+    if (!pair?.questionNumber) return
+
+    if (answerAnalysisDebounceRef.current) {
+      clearTimeout(answerAnalysisDebounceRef.current)
+    }
+
+    answerAnalysisDebounceRef.current = setTimeout(() => {
+      analyzeSingleAnswer(pair)
+    }, 1200)
+  }
+
+  const computeSimpleFinalScore = (analyses, llmOverallScore) => {
+    const list = Object.values(analyses || {})
+      .map((item) => Number(item?.score || 0))
+      .filter((value) => Number.isFinite(value))
+
+    if (list.length > 0) {
+      const average = list.reduce((sum, value) => sum + value, 0) / list.length
+      return Math.round(average)
+    }
+
+    if (Number.isFinite(Number(llmOverallScore))) {
+      return Math.round(Number(llmOverallScore))
+    }
+
+    return 0
   }
 
   const setupVapiEventListeners = (vapiInstance) => {
@@ -787,6 +923,22 @@ function StartInterview() {
         console.error('Error analyzing interview transcript:', analysisError)
       }
 
+      // Run any pending per-answer analysis before final save.
+      if (answerAnalysisDebounceRef.current) {
+        clearTimeout(answerAnalysisDebounceRef.current)
+        answerAnalysisDebounceRef.current = null
+      }
+      const latestPair = (qaPairsRef.current || []).at(-1)
+      if (latestPair) {
+        await analyzeSingleAnswer(latestPair)
+      }
+
+      const perAnswerScores = answerAnalysesRef.current
+      const simpleFinalScore = computeSimpleFinalScore(
+        perAnswerScores,
+        llmAnalysis?.overallScore,
+      )
+
       // Save interview results with transcript and LLM score
       try {
         const duration = callDurationRef.current
@@ -864,8 +1016,10 @@ function StartInterview() {
               questions_answered: answeredQuestions,
               total_questions: configuredQuestions,
               time_per_question: duration / safeAnsweredQuestions,
+              simple_final_score: simpleFinalScore,
               llm_overall_score: llmAnalysis?.overallScore ?? null,
               llm_category_scores: llmAnalysis?.categoryScores || null,
+              answer_scores: perAnswerScores,
               question_scores: llmAnalysis?.questionEvaluations || [],
               proctoring_metrics: {
                 detection_score_total: detectionTotalScore,
@@ -927,8 +1081,10 @@ function StartInterview() {
                   questions_answered: answeredQuestions,
                   total_questions: configuredQuestions,
                   time_per_question: duration / safeAnsweredQuestions,
+                  simple_final_score: simpleFinalScore,
                   llm_overall_score: llmAnalysis?.overallScore ?? null,
                   llm_category_scores: llmAnalysis?.categoryScores || null,
+                  answer_scores: perAnswerScores,
                   question_scores: llmAnalysis?.questionEvaluations || [],
                   proctoring_metrics: {
                     detection_score_total: detectionTotalScore,
