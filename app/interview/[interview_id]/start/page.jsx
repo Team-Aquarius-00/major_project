@@ -104,10 +104,54 @@ function StartInterview() {
   const qaPairsRef = useRef([])
   const conversationLogRef = useRef([])
   const answerAnalysesRef = useRef({})
+  const detectionClassCountsRef = useRef({})
+  const detectionNonPersonClassesRef = useRef([])
+  const detectionSnapshotEventsRef = useRef([])
   const autoStoppedByTabLimitRef = useRef(false)
   const lastAssistantQuestionRef = useRef('')
   const lastAssistantQuestionAtRef = useRef(0)
+  const lastAssistantMessageAtRef = useRef(0)
   const answerAnalysisDebounceRef = useRef(null)
+
+  const clampPercent = (value) =>
+    Math.min(100, Math.max(0, Number.isFinite(value) ? value : 0))
+
+  const computeAnswerScore = (analyses) => {
+    const scores = Object.values(analyses || {})
+      .map((item) => Number(item?.score || 0))
+      .filter((value) => Number.isFinite(value))
+
+    if (!scores.length) {
+      return { answerScore: 0, analyzedAnswerCount: 0 }
+    }
+
+    const average =
+      scores.reduce((sum, value) => sum + value, 0) / scores.length
+
+    return {
+      answerScore: Math.round(average),
+      analyzedAnswerCount: scores.length,
+    }
+  }
+
+  const computeIntegrityScore = ({
+    detectionRiskPercent,
+    screenFocusPercent,
+    eyeFocusPercent,
+    tabSwitchRiskPercent,
+  }) => {
+    const D = 100 - clampPercent(detectionRiskPercent)
+    const S = clampPercent(screenFocusPercent)
+    const E = clampPercent(eyeFocusPercent)
+    const T = 100 - clampPercent(tabSwitchRiskPercent)
+
+    return Math.round(0.35 * D + 0.25 * S + 0.25 * E + 0.15 * T)
+  }
+
+  const computeFinalManagerScore = (answerScore, integrityScore) =>
+    Math.round(
+      0.8 * Number(answerScore || 0) + 0.2 * Number(integrityScore || 0),
+    )
 
   const resetDetectionMetrics = () => {
     setDetectionScore(0)
@@ -116,6 +160,9 @@ function StartInterview() {
     setDetectionMaxScore(0)
     setDetectedClasses([])
     setDetectionViolations([])
+    detectionClassCountsRef.current = {}
+    detectionNonPersonClassesRef.current = []
+    detectionSnapshotEventsRef.current = []
   }
 
   useEffect(() => {
@@ -264,10 +311,53 @@ function StartInterview() {
       }
 
       const data = await response.json()
-      setDetectedClasses(Array.isArray(data?.classes) ? data.classes : [])
+      const frameClasses = Array.isArray(data?.classes) ? data.classes : []
+      setDetectedClasses(frameClasses)
       setDetectionViolations(
         Array.isArray(data?.violations) ? data.violations : [],
       )
+
+      // Keep aggregate object-detection class stats for persistence/reporting.
+      const updatedClassCounts = { ...(detectionClassCountsRef.current || {}) }
+      frameClasses.forEach((detectedClass) => {
+        const label = String(detectedClass || '')
+          .trim()
+          .toLowerCase()
+        if (!label) return
+        updatedClassCounts[label] = (updatedClassCounts[label] || 0) + 1
+      })
+      detectionClassCountsRef.current = updatedClassCounts
+
+      const nonPersonClassSet = new Set(detectionNonPersonClassesRef.current)
+      frameClasses.forEach((detectedClass) => {
+        const label = String(detectedClass || '')
+          .trim()
+          .toLowerCase()
+        if (!label || label === 'person') return
+        nonPersonClassSet.add(label)
+      })
+      detectionNonPersonClassesRef.current = Array.from(nonPersonClassSet)
+
+      const snapshotUrl = String(data?.snapshot_full_url || '').trim()
+      const snapshotClasses = Array.isArray(data?.snapshot_classes)
+        ? data.snapshot_classes
+        : []
+      if (snapshotUrl) {
+        const previous = detectionSnapshotEventsRef.current || []
+        const exists = previous.some((item) => item?.url === snapshotUrl)
+
+        if (!exists) {
+          detectionSnapshotEventsRef.current = [
+            ...previous,
+            {
+              url: snapshotUrl,
+              classes: snapshotClasses,
+              capturedAt: new Date().toISOString(),
+            },
+          ]
+        }
+      }
+
       const frameDetectionScore =
         typeof data?.score === 'number' ? Math.max(0, data.score) : 0
       setDetectionScore(frameDetectionScore)
@@ -685,22 +775,73 @@ function StartInterview() {
     if (!text.trim()) return
 
     setCurrentAnswer(text)
-    const existingPairs = qaPairsRef.current || []
+    const questions = interviewInfo?.interviewData?.questionList || []
+    const existingPairs = [...(qaPairsRef.current || [])]
 
+    // If assistant-question detection misses the first turn, seed Q1 automatically.
     if (!existingPairs.length) {
-      return
+      existingPairs.push({
+        questionNumber: 1,
+        configuredQuestion: questions[0]?.question || 'Question 1',
+        askedByAssistant: '(auto-detected)',
+        answer: '',
+        askedAt: new Date().toISOString(),
+      })
     }
 
-    const lastAskedIndex = [...existingPairs]
+    let lastAskedIndex = [...existingPairs]
       .map((pair, index) => ({ pair, index }))
       .reverse()
       .find((entry) => entry?.pair?.askedByAssistant)?.index
 
     if (typeof lastAskedIndex !== 'number') {
-      return
+      lastAskedIndex = existingPairs.length - 1
     }
 
     const updated = [...existingPairs]
+
+    const currentPair = updated[lastAskedIndex]
+    const currentAnsweredAtMs = currentPair?.answeredAt
+      ? Date.parse(String(currentPair.answeredAt))
+      : 0
+    const hasCurrentAnswer = String(currentPair?.answer || '').trim().length > 0
+
+    // If assistant spoke after the current answer, treat this as the next question's answer,
+    // even when strict question detection did not fire.
+    const shouldCreateNextPair =
+      hasCurrentAnswer &&
+      currentAnsweredAtMs > 0 &&
+      lastAssistantMessageAtRef.current > currentAnsweredAtMs + 250
+
+    if (shouldCreateNextPair) {
+      const nextQuestionIndex = updated.length
+      if (
+        nextQuestionIndex < Math.max(questions.length, nextQuestionIndex + 1)
+      ) {
+        updated.push({
+          questionNumber: nextQuestionIndex + 1,
+          configuredQuestion:
+            questions[nextQuestionIndex]?.question ||
+            `Question ${nextQuestionIndex + 1}`,
+          askedByAssistant: '(auto-detected)',
+          answer: '',
+          askedAt: new Date().toISOString(),
+        })
+
+        const newQuestionCount = Math.min(
+          nextQuestionIndex + 1,
+          questions.length || nextQuestionIndex + 1,
+        )
+        setCurrentQuestion(newQuestionCount)
+        setInterviewProgress(
+          (newQuestionCount /
+            Math.max(questions.length || newQuestionCount, 1)) *
+            100,
+        )
+        lastAskedIndex = updated.length - 1
+      }
+    }
+
     updated[lastAskedIndex] = {
       ...updated[lastAskedIndex],
       answer: mergeTranscriptText(updated[lastAskedIndex]?.answer, text),
@@ -718,24 +859,32 @@ function StartInterview() {
     const questionNumber = Number(analysis?.questionNumber || 0)
     if (!questionNumber) return
 
-    setAnswerAnalyses((prev) => ({
-      ...prev,
-      [questionNumber]: {
-        questionNumber,
-        score: Number(analysis?.score || 0),
-        summary: String(analysis?.summary || ''),
-        strengths: Array.isArray(analysis?.strengths) ? analysis.strengths : [],
-        improvements: Array.isArray(analysis?.improvements)
-          ? analysis.improvements
-          : [],
-        updatedAt: new Date().toISOString(),
-      },
-    }))
+    setAnswerAnalyses((prev) => {
+      const next = {
+        ...prev,
+        [questionNumber]: {
+          questionNumber,
+          score: Number(analysis?.score || 0),
+          summary: String(analysis?.summary || ''),
+          strengths: Array.isArray(analysis?.strengths)
+            ? analysis.strengths
+            : [],
+          improvements: Array.isArray(analysis?.improvements)
+            ? analysis.improvements
+            : [],
+          updatedAt: new Date().toISOString(),
+        },
+      }
+
+      // Keep ref in sync immediately so call-end scoring does not read stale state.
+      answerAnalysesRef.current = next
+      return next
+    })
   }
 
   const analyzeSingleAnswer = async (pair) => {
     const answer = String(pair?.answer || '').trim()
-    if (!answer || answer.length < 12) {
+    if (!answer) {
       return
     }
 
@@ -768,6 +917,54 @@ function StartInterview() {
     }
   }
 
+  const analyzePendingAnswers = async () => {
+    const allPairs = qaPairsRef.current || []
+
+    for (const pair of allPairs) {
+      const questionNumber = Number(pair?.questionNumber || 0)
+      const answer = String(pair?.answer || '').trim()
+
+      if (!questionNumber || !answer) {
+        continue
+      }
+
+      const existing = answerAnalysesRef.current?.[questionNumber]
+      const alreadyAnalyzed =
+        existing && Number.isFinite(Number(existing?.score))
+
+      if (!alreadyAnalyzed) {
+        await analyzeSingleAnswer(pair)
+      }
+    }
+  }
+
+  const backfillMissingAnalyses = () => {
+    const allPairs = qaPairsRef.current || []
+
+    allPairs.forEach((pair) => {
+      const questionNumber = Number(pair?.questionNumber || 0)
+      const answer = String(pair?.answer || '').trim()
+
+      if (!questionNumber || !answer) {
+        return
+      }
+
+      const existing = answerAnalysesRef.current?.[questionNumber]
+      const alreadyAnalyzed =
+        existing && Number.isFinite(Number(existing?.score))
+
+      if (!alreadyAnalyzed) {
+        upsertAnswerAnalysis({
+          questionNumber,
+          score: 0,
+          summary: 'Automatic analysis could not be completed for this answer.',
+          strengths: [],
+          improvements: ['Review this answer manually.'],
+        })
+      }
+    })
+  }
+
   const queueAnswerAnalysis = (pair) => {
     if (!pair?.questionNumber) return
 
@@ -778,23 +975,6 @@ function StartInterview() {
     answerAnalysisDebounceRef.current = setTimeout(() => {
       analyzeSingleAnswer(pair)
     }, 1200)
-  }
-
-  const computeSimpleFinalScore = (analyses, llmOverallScore) => {
-    const list = Object.values(analyses || {})
-      .map((item) => Number(item?.score || 0))
-      .filter((value) => Number.isFinite(value))
-
-    if (list.length > 0) {
-      const average = list.reduce((sum, value) => sum + value, 0) / list.length
-      return Math.round(average)
-    }
-
-    if (Number.isFinite(Number(llmOverallScore))) {
-      return Math.round(Number(llmOverallScore))
-    }
-
-    return 0
   }
 
   const setupVapiEventListeners = (vapiInstance) => {
@@ -880,16 +1060,12 @@ function StartInterview() {
         clearTimeout(answerAnalysisDebounceRef.current)
         answerAnalysisDebounceRef.current = null
       }
-      const latestPair = (qaPairsRef.current || []).at(-1)
-      if (latestPair) {
-        await analyzeSingleAnswer(latestPair)
-      }
+      await analyzePendingAnswers()
+      backfillMissingAnalyses()
 
       const perAnswerScores = answerAnalysesRef.current
-      const simpleFinalScore = computeSimpleFinalScore(
-        perAnswerScores,
-        llmAnalysis?.overallScore,
-      )
+      const { answerScore, analyzedAnswerCount } =
+        computeAnswerScore(perAnswerScores)
 
       // Save interview results with transcript and LLM score
       try {
@@ -902,14 +1078,10 @@ function StartInterview() {
             ? Number((detectionTotalScore / detectionSampleCount).toFixed(2))
             : 0
 
-        const clampPercent = (value) =>
-          Math.min(100, Math.max(0, Number.isFinite(value) ? value : 0))
-
         // Detection score can reach up to 125 per frame in the backend logic.
         const detectionRiskPercent = clampPercent(
           (averageDetectionScore / 125) * 100,
         )
-        const detectionIntegrityPercent = 100 - detectionRiskPercent
         const screenFocusPercent = clampPercent(
           Number(finalMetrics?.screenFocus?.percentage ?? 0),
         )
@@ -925,20 +1097,29 @@ function StartInterview() {
         const tabSwitchRiskPercent = clampPercent(
           (tabSwitchCount / Math.max(maxTabSwitches, 1)) * 100,
         )
-        const tabIntegrityPercent = 100 - tabSwitchRiskPercent
 
-        const proctoringWeights = {
-          detection: 0.35,
-          screenFocus: 0.25,
-          eyeFocus: 0.25,
-          tabSwitches: 0.15,
+        const finalIntegrityScore = computeIntegrityScore({
+          detectionRiskPercent,
+          screenFocusPercent,
+          eyeFocusPercent: eyeFocusPercentFinal,
+          tabSwitchRiskPercent,
+        })
+
+        const integrityComponentD = Math.round(100 - detectionRiskPercent)
+        const integrityComponentS = Math.round(screenFocusPercent)
+        const integrityComponentE = Math.round(eyeFocusPercentFinal)
+        const integrityComponentT = Math.round(100 - tabSwitchRiskPercent)
+
+        const detectedObjectClassCounts = {
+          ...(detectionClassCountsRef.current || {}),
         }
+        const nonPersonDetectedClasses = [
+          ...(detectionNonPersonClassesRef.current || []),
+        ]
 
-        const finalIntegrityScore = Math.round(
-          detectionIntegrityPercent * proctoringWeights.detection +
-            screenFocusPercent * proctoringWeights.screenFocus +
-            eyeFocusPercentFinal * proctoringWeights.eyeFocus +
-            tabIntegrityPercent * proctoringWeights.tabSwitches,
+        const finalManagerScore = computeFinalManagerScore(
+          answerScore,
+          finalIntegrityScore,
         )
         const finalCheatingRiskScore = 100 - finalIntegrityScore
 
@@ -977,12 +1158,16 @@ function StartInterview() {
                   recommendation: llmAnalysis?.recommendation || null,
                   strengths: llmAnalysis?.strengths || [],
                   improvement_areas: llmAnalysis?.improvementAreas || [],
+                  detected_classes_non_person: nonPersonDetectedClasses,
                 },
                 scoring: {
                   questions_answered: answeredQuestions,
                   total_questions: configuredQuestions,
                   time_per_question: duration / safeAnsweredQuestions,
-                  simple_final_score: simpleFinalScore,
+                  analyzed_answers_count: analyzedAnswerCount,
+                  answer_score: answerScore,
+                  integrity_score: finalIntegrityScore,
+                  final_manager_score: finalManagerScore,
                   llm_overall_score: llmAnalysis?.overallScore ?? null,
                   llm_category_scores: llmAnalysis?.categoryScores || null,
                   answer_scores: perAnswerScores,
@@ -998,7 +1183,15 @@ function StartInterview() {
                     detection_risk_percentage: Math.round(detectionRiskPercent),
                     tab_switch_risk_percentage:
                       Math.round(tabSwitchRiskPercent),
-                    weights: proctoringWeights,
+                    integrity_components: {
+                      D: integrityComponentD,
+                      S: integrityComponentS,
+                      E: integrityComponentE,
+                      T: integrityComponentT,
+                    },
+                    detected_object_classes_non_person:
+                      nonPersonDetectedClasses,
+                    detected_object_class_counts: detectedObjectClassCounts,
                     final_integrity_score: finalIntegrityScore,
                     final_cheating_risk_score: finalCheatingRiskScore,
                   },
@@ -1012,8 +1205,16 @@ function StartInterview() {
                     average_score: averageDetectionScore,
                     max_score: detectionMaxScore,
                     samples: detectionSampleCount,
+                    classes_latest: detectedClasses,
+                    class_counts: detectedObjectClassCounts,
+                    non_person_classes_seen: nonPersonDetectedClasses,
+                    evidence_snapshots: detectionSnapshotEventsRef.current,
                   },
                 },
+                answer_score: answerScore,
+                integrity_score: finalIntegrityScore,
+                final_manager_score: finalManagerScore,
+                analyzed_answers_count: analyzedAnswerCount,
               }),
             })
           }
@@ -1052,6 +1253,7 @@ function StartInterview() {
       appendConversationEntry(role, text, message)
 
       if (role === 'assistant') {
+        lastAssistantMessageAtRef.current = Date.now()
         assignAssistantQuestion(text)
       }
 
@@ -1218,6 +1420,26 @@ Guidelines:
     detectionSampleCount > 0
       ? Math.round((detectionTotalScore / detectionSampleCount) * 100) / 100
       : 0
+  const { answerScore: liveAnswerScore, analyzedAnswerCount } =
+    computeAnswerScore(answerAnalyses)
+  const liveDetectionRiskPercent = clampPercent(
+    (detectionAverageScore / 125) * 100,
+  )
+  const liveTabSwitchRiskPercent = clampPercent(
+    (Number(focusMetrics.tabSwitches.uiSwitchCount || 0) /
+      Math.max(maxTabSwitches, 1)) *
+      100,
+  )
+  const liveIntegrityScore = computeIntegrityScore({
+    detectionRiskPercent: liveDetectionRiskPercent,
+    screenFocusPercent: Number(focusMetrics.screenFocus.percentage || 0),
+    eyeFocusPercent,
+    tabSwitchRiskPercent: liveTabSwitchRiskPercent,
+  })
+  const liveFinalManagerScore = computeFinalManagerScore(
+    liveAnswerScore,
+    liveIntegrityScore,
+  )
   const candidateFocusStatus = focusMetrics.tabSwitches.isCurrentlyAway
     ? 'Away from interview tab'
     : focusMetrics.eyeMovement.totalSamples === 0
@@ -1491,18 +1713,6 @@ Guidelines:
                     </div>
 
                     <div className='rounded-xl bg-white border border-slate-200 px-3 py-2 min-w-44'>
-                      <p className='text-xs text-slate-500'>Detection score</p>
-                      <p className='text-lg font-bold text-slate-900 leading-tight'>
-                        {detectionScore}
-                      </p>
-                      <p className='text-xs text-slate-600 mt-1'>
-                        Total: <strong>{detectionTotalScore}</strong> | Avg:{' '}
-                        <strong>{detectionAverageScore}</strong>
-                      </p>
-                      <p className='text-xs text-slate-600'>
-                        Max: <strong>{detectionMaxScore}</strong> | Samples:{' '}
-                        <strong>{detectionSampleCount}</strong>
-                      </p>
                       <p className='text-xs text-slate-500'>
                         {isDetectionRunning ? 'Monitoring' : 'Stopped'}
                       </p>
@@ -1650,6 +1860,36 @@ Guidelines:
                     {focusMetrics.tabSwitches.uiSwitchCount}/{maxTabSwitches}
                   </p>
                 </div>
+              </div>
+
+              <div className='mt-4 rounded-xl bg-white/10 p-4'>
+                <p className='text-[11px] uppercase tracking-wide text-white/60'>
+                  Candidate
+                </p>
+                <p className='mt-1 text-base font-semibold'>
+                  {interviewInfo?.userName || 'Candidate'}
+                </p>
+
+                <div className='mt-3 space-y-2 text-sm'>
+                  <div className='flex items-center justify-between'>
+                    <span className='text-white/70'>Answer Score</span>
+                    <span className='font-semibold'>{liveAnswerScore}</span>
+                  </div>
+                  <div className='flex items-center justify-between'>
+                    <span className='text-white/70'>Integrity Score</span>
+                    <span className='font-semibold'>{liveIntegrityScore}</span>
+                  </div>
+                  <div className='flex items-center justify-between border-t border-white/15 pt-2'>
+                    <span className='text-white/80'>Final Manager Score</span>
+                    <span className='text-lg font-bold'>
+                      {liveFinalManagerScore}
+                    </span>
+                  </div>
+                </div>
+
+                <p className='mt-3 text-[11px] text-white/60'>
+                  Analyzed answers: {analyzedAnswerCount}
+                </p>
               </div>
             </div>
           </div>

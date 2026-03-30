@@ -12,6 +12,7 @@ This backend exposes a single endpoint, `POST /detect`, that receives an image f
   - MediaPipe Face Mesh for facial landmarks + coarse head pose
   - MediaPipe Iris landmarks for gaze direction estimation
 - Violation scoring for interview monitoring
+- Snapshot evidence storage when non-person objects are detected
 - CORS enabled for local frontend integration
 
 ## Folder Contents
@@ -100,7 +101,11 @@ Example response:
     "roll": 1.4
   },
   "violations": ["Phone detected"],
-  "score": 30
+  "score": 30,
+  "snapshot_saved": true,
+  "snapshot_url": "/snapshots/20260331T121530123456_ab12cd34.jpg",
+  "snapshot_full_url": "http://localhost:8000/snapshots/20260331T121530123456_ab12cd34.jpg",
+  "snapshot_classes": ["cell phone"]
 }
 ```
 
@@ -149,3 +154,4 @@ NEXT_PUBLIC_BACKEND_URL=http://localhost:8000
 
 - CORS is currently open (`allow_origins=["*"]`) for development.
 - For production, restrict CORS origins and consider authentication/rate-limiting.
+- Saved evidence images are written under `backend/snapshots/` and served via `/snapshots/*`.

@@ -1,9 +1,13 @@
-from fastapi import FastAPI, UploadFile, File
+from fastapi import FastAPI, UploadFile, File, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from ultralytics import YOLO
 import cv2
 import numpy as np
 import mediapipe as mp
+from pathlib import Path
+from datetime import datetime
+from uuid import uuid4
 
 app = FastAPI()
 
@@ -16,6 +20,10 @@ app.add_middleware(
 )
 
 model = YOLO("yolov8n.pt")
+
+SNAPSHOT_DIR = Path(__file__).resolve().parent / "snapshots"
+SNAPSHOT_DIR.mkdir(parents=True, exist_ok=True)
+app.mount("/snapshots", StaticFiles(directory=str(SNAPSHOT_DIR)), name="snapshots")
 
 face_cascade = cv2.CascadeClassifier(
     cv2.data.haarcascades + "haarcascade_frontalface_default.xml"
@@ -184,7 +192,7 @@ def _estimate_iris_gaze(face_landmarks, frame_w: int, frame_h: int):
     }
 
 @app.post("/detect")
-async def detect(file: UploadFile = File(...)):
+async def detect(request: Request, file: UploadFile = File(...)):
     contents = await file.read()
 
     nparr = np.frombuffer(contents, np.uint8)
@@ -307,6 +315,22 @@ async def detect(file: UploadFile = File(...)):
         violations.append("Candidate gaze/head not centered")
         score += 10
 
+    non_person_classes = sorted({cls for cls in classes if cls != "person"})
+    snapshot_saved = False
+    snapshot_url = None
+    snapshot_full_url = None
+
+    # Persist frame evidence only when non-person objects are detected.
+    if non_person_classes:
+        filename = f"{datetime.utcnow().strftime('%Y%m%dT%H%M%S%f')}_{uuid4().hex[:8]}.jpg"
+        snapshot_path = SNAPSHOT_DIR / filename
+        snapshot_saved = bool(cv2.imwrite(str(snapshot_path), frame))
+
+        if snapshot_saved:
+            snapshot_url = f"/snapshots/{filename}"
+            base_url = str(request.base_url).rstrip("/")
+            snapshot_full_url = f"{base_url}{snapshot_url}"
+
     return {
         "classes": list(set(classes)),
         "person_count": person_count,
@@ -320,5 +344,9 @@ async def detect(file: UploadFile = File(...)):
             "gaze": "Look near the camera/screen center (avoid long side glances)",
         },
         "violations": violations,
-        "score": score
+        "score": score,
+        "snapshot_saved": snapshot_saved,
+        "snapshot_url": snapshot_url,
+        "snapshot_full_url": snapshot_full_url,
+        "snapshot_classes": non_person_classes,
     }

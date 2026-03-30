@@ -3,6 +3,7 @@ import {
   Calendar,
   Code2Icon,
   Gem,
+  Trophy,
   LayoutDashboard,
   List,
   Puzzle,
@@ -30,6 +31,12 @@ export const SideBarOptions = [
     path: '/all-interview',
     section: 'Interviews',
     // badge: 2,
+  },
+  {
+    name: 'Interview Result',
+    icon: Trophy,
+    path: '/dashboard/InterviewResult',
+    section: 'Interviews',
   },
   {
     name: 'Billings',

@@ -1,6 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 
+function toNullableRoundedInt(value: unknown) {
+  const numeric = Number(value)
+  if (!Number.isFinite(numeric)) return null
+  return Math.round(numeric)
+}
+
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
@@ -89,8 +95,22 @@ export async function PATCH(request: NextRequest) {
       )
     }
 
+    const attemptId = Number(attempt_id)
+    const answerScore =
+      toNullableRoundedInt(body?.answer_score) ??
+      toNullableRoundedInt(scoring?.answer_score)
+    const integrityScore =
+      toNullableRoundedInt(body?.integrity_score) ??
+      toNullableRoundedInt(scoring?.integrity_score)
+    const finalManagerScore =
+      toNullableRoundedInt(body?.final_manager_score) ??
+      toNullableRoundedInt(scoring?.final_manager_score)
+    const analyzedAnswersCount =
+      toNullableRoundedInt(body?.analyzed_answers_count) ??
+      toNullableRoundedInt(scoring?.analyzed_answers_count)
+
     const attempt = await prisma.interviewAttempt.update({
-      where: { id: Number(attempt_id) },
+      where: { id: attemptId },
       data: {
         completed: Boolean(completed),
         completed_at: completed ? new Date() : null,
@@ -99,6 +119,17 @@ export async function PATCH(request: NextRequest) {
         tracking: tracking || null,
       },
     })
+
+    // Persist score primitives in dedicated columns for dashboard querying.
+    await prisma.$executeRaw`
+      UPDATE "InterviewAttempt"
+      SET
+        "answer_score" = ${answerScore},
+        "integrity_score" = ${integrityScore},
+        "final_manager_score" = ${finalManagerScore},
+        "analyzed_answers_count" = ${analyzedAnswersCount}
+      WHERE "id" = ${attemptId}
+    `
 
     return NextResponse.json({
       success: true,

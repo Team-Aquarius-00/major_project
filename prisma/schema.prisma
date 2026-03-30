@@ -48,6 +48,10 @@ model InterviewAttempt {
   started_at        DateTime?       @default(now()) @db.Timestamptz(6)
   completed_at      DateTime?       @db.Timestamptz(6)
   completed         Boolean?        @default(false)
+  answer_score      Int?
+  integrity_score   Int?
+  final_manager_score Int?
+  analyzed_answers_count Int?
   feedback          Json?
   scoring           Json?
   tracking          Json?
