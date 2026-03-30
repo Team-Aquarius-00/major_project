@@ -144,7 +144,7 @@ function Interview() {
             <div className='flex items-center gap-3 mb-6'>
               <Briefcase className='h-6 w-6 text-blue-600' />
               <h2 className='text-2xl font-bold text-gray-900'>
-                {interviewData?.jobPosition || 'Position Not Specified'}
+                {interviewData?.job_position || 'Position Not Specified'}
               </h2>
             </div>
 
@@ -246,7 +246,7 @@ function Interview() {
                   Enter Your Full Name
                 </label>
                 <Input
-                  placeholder='e.g., John Smith'
+                  placeholder='Hari Prasad'
                   value={userName}
                   onChange={(e) => setUserName(e.target.value)}
                   className='h-14 text-lg text-center border-2 border-gray-200 focus:border-blue-500 focus:ring-4 focus:ring-blue-100 rounded-xl transition-all duration-200'
@@ -259,7 +259,7 @@ function Interview() {
                   Email (optional)
                 </label>
                 <Input
-                  placeholder='e.g., john@example.com'
+                  placeholder='hari123@gmail.com'
                   type='email'
                   value={userEmail}
                   onChange={(e) => setUserEmail(e.target.value)}

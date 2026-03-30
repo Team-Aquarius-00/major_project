@@ -1,5 +1,11 @@
 'use client'
-import React, { useContext, useEffect, useState, useRef } from 'react'
+import React, {
+  useContext,
+  useEffect,
+  useState,
+  useRef,
+  useCallback,
+} from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { InterviewDataContext } from '../../../../context/InterviewDataContext'
 import {
@@ -85,6 +91,9 @@ function StartInterview() {
   const [detectedClasses, setDetectedClasses] = useState([])
   const [detectionViolations, setDetectionViolations] = useState([])
   const [detectionScore, setDetectionScore] = useState(0)
+  const [detectionTotalScore, setDetectionTotalScore] = useState(0)
+  const [detectionSampleCount, setDetectionSampleCount] = useState(0)
+  const [detectionMaxScore, setDetectionMaxScore] = useState(0)
   const [isDetectionRunning, setIsDetectionRunning] = useState(false)
 
   // Interview Alerts (Real-time monitoring)
@@ -106,6 +115,16 @@ function StartInterview() {
   const trackingServiceRef = useRef(null)
   const qaPairsRef = useRef([])
   const conversationLogRef = useRef([])
+  const autoStoppedByTabLimitRef = useRef(false)
+
+  const resetDetectionMetrics = () => {
+    setDetectionScore(0)
+    setDetectionTotalScore(0)
+    setDetectionSampleCount(0)
+    setDetectionMaxScore(0)
+    setDetectedClasses([])
+    setDetectionViolations([])
+  }
 
   useEffect(() => {
     if (interviewInfo) {
@@ -271,7 +290,12 @@ function StartInterview() {
       setDetectionViolations(
         Array.isArray(data?.violations) ? data.violations : [],
       )
-      setDetectionScore(typeof data?.score === 'number' ? data.score : 0)
+      const frameDetectionScore =
+        typeof data?.score === 'number' ? Math.max(0, data.score) : 0
+      setDetectionScore(frameDetectionScore)
+      setDetectionTotalScore((prev) => prev + frameDetectionScore)
+      setDetectionSampleCount((prev) => prev + 1)
+      setDetectionMaxScore((prev) => Math.max(prev, frameDetectionScore))
 
       const tracking = trackingServiceRef.current
       if (tracking) {
@@ -769,6 +793,50 @@ function StartInterview() {
         const answeredQuestions = currentQuestionRef.current
         const configuredQuestions = totalQuestionsRef.current
         const safeAnsweredQuestions = Math.max(answeredQuestions, 1)
+        const averageDetectionScore =
+          detectionSampleCount > 0
+            ? Number((detectionTotalScore / detectionSampleCount).toFixed(2))
+            : 0
+
+        const clampPercent = (value) =>
+          Math.min(100, Math.max(0, Number.isFinite(value) ? value : 0))
+
+        // Detection score can reach up to 125 per frame in the backend logic.
+        const detectionRiskPercent = clampPercent(
+          (averageDetectionScore / 125) * 100,
+        )
+        const detectionIntegrityPercent = 100 - detectionRiskPercent
+        const screenFocusPercent = clampPercent(
+          Number(finalMetrics?.screenFocus?.percentage ?? 0),
+        )
+        const finalDistractionRate = Number(
+          finalMetrics?.eyeMovement?.distractionRate ?? 0,
+        )
+        const eyeFocusPercentFinal = clampPercent(
+          (1 - finalDistractionRate) * 100,
+        )
+        const tabSwitchCount = Number(
+          finalMetrics?.tabSwitches?.uiSwitchCount || 0,
+        )
+        const tabSwitchRiskPercent = clampPercent(
+          (tabSwitchCount / Math.max(maxTabSwitches, 1)) * 100,
+        )
+        const tabIntegrityPercent = 100 - tabSwitchRiskPercent
+
+        const proctoringWeights = {
+          detection: 0.35,
+          screenFocus: 0.25,
+          eyeFocus: 0.25,
+          tabSwitches: 0.15,
+        }
+
+        const finalIntegrityScore = Math.round(
+          detectionIntegrityPercent * proctoringWeights.detection +
+            screenFocusPercent * proctoringWeights.screenFocus +
+            eyeFocusPercentFinal * proctoringWeights.eyeFocus +
+            tabIntegrityPercent * proctoringWeights.tabSwitches,
+        )
+        const finalCheatingRiskScore = 100 - finalIntegrityScore
 
         const response = await fetch(`/api/interview/${interview_id}/results`, {
           method: 'POST',
@@ -780,6 +848,11 @@ function StartInterview() {
               tab_switches: finalMetrics?.tabSwitches?.uiSwitchCount || 0,
               gaze_alerts: finalMetrics?.eyeMovement?.distractions || 0,
               focus_score: finalMetrics?.tabSwitches?.focusScore || 0,
+              detection_score_latest: detectionScore,
+              detection_score_total: detectionTotalScore,
+              detection_score_average: averageDetectionScore,
+              detection_score_max: detectionMaxScore,
+              detection_samples: detectionSampleCount,
               transcript: conversationLogRef.current,
               qa_pairs: qaPairsRef.current,
               llm_summary: llmAnalysis?.summary || null,
@@ -794,10 +867,31 @@ function StartInterview() {
               llm_overall_score: llmAnalysis?.overallScore ?? null,
               llm_category_scores: llmAnalysis?.categoryScores || null,
               question_scores: llmAnalysis?.questionEvaluations || [],
+              proctoring_metrics: {
+                detection_score_total: detectionTotalScore,
+                detection_score_average: averageDetectionScore,
+                detection_score_max: detectionMaxScore,
+                detection_samples: detectionSampleCount,
+                screen_focus_percentage: screenFocusPercent,
+                eye_focus_percentage: eyeFocusPercentFinal,
+                tab_switches: tabSwitchCount,
+                detection_risk_percentage: Math.round(detectionRiskPercent),
+                tab_switch_risk_percentage: Math.round(tabSwitchRiskPercent),
+                weights: proctoringWeights,
+                final_integrity_score: finalIntegrityScore,
+                final_cheating_risk_score: finalCheatingRiskScore,
+              },
             },
             tracking: {
               final_metrics: finalMetrics,
               alerts: alertsRef.current,
+              detection: {
+                latest_score: detectionScore,
+                total_score: detectionTotalScore,
+                average_score: averageDetectionScore,
+                max_score: detectionMaxScore,
+                samples: detectionSampleCount,
+              },
             },
           }),
         })
@@ -817,6 +911,11 @@ function StartInterview() {
                   tab_switches: finalMetrics?.tabSwitches?.uiSwitchCount || 0,
                   gaze_alerts: finalMetrics?.eyeMovement?.distractions || 0,
                   focus_score: finalMetrics?.tabSwitches?.focusScore || 0,
+                  detection_score_latest: detectionScore,
+                  detection_score_total: detectionTotalScore,
+                  detection_score_average: averageDetectionScore,
+                  detection_score_max: detectionMaxScore,
+                  detection_samples: detectionSampleCount,
                   transcript: conversationLogRef.current,
                   qa_pairs: qaPairsRef.current,
                   llm_summary: llmAnalysis?.summary || null,
@@ -831,10 +930,32 @@ function StartInterview() {
                   llm_overall_score: llmAnalysis?.overallScore ?? null,
                   llm_category_scores: llmAnalysis?.categoryScores || null,
                   question_scores: llmAnalysis?.questionEvaluations || [],
+                  proctoring_metrics: {
+                    detection_score_total: detectionTotalScore,
+                    detection_score_average: averageDetectionScore,
+                    detection_score_max: detectionMaxScore,
+                    detection_samples: detectionSampleCount,
+                    screen_focus_percentage: screenFocusPercent,
+                    eye_focus_percentage: eyeFocusPercentFinal,
+                    tab_switches: tabSwitchCount,
+                    detection_risk_percentage: Math.round(detectionRiskPercent),
+                    tab_switch_risk_percentage:
+                      Math.round(tabSwitchRiskPercent),
+                    weights: proctoringWeights,
+                    final_integrity_score: finalIntegrityScore,
+                    final_cheating_risk_score: finalCheatingRiskScore,
+                  },
                 },
                 tracking: {
                   final_metrics: finalMetrics,
                   alerts: alertsRef.current,
+                  detection: {
+                    latest_score: detectionScore,
+                    total_score: detectionTotalScore,
+                    average_score: averageDetectionScore,
+                    max_score: detectionMaxScore,
+                    samples: detectionSampleCount,
+                  },
                 },
               }),
             })
@@ -885,6 +1006,7 @@ function StartInterview() {
 
   const startCall = async () => {
     if (DISABLE_VAPI_FOR_TESTING) {
+      resetDetectionMetrics()
       setIsCallActive(true)
       setIsPaused(false)
       toast.info('Testing mode: Vapi disabled. Focus tracking is active.')
@@ -935,19 +1057,13 @@ You are an AI voice assistant conducting a professional interview for the positi
 
 1. Begin with a warm, professional greeting
 2. Ask one question at a time from this list: ${questionList}
-3. Listen carefully to responses and provide encouraging feedback
-4. If the candidate struggles, offer helpful hints without giving away answers
-5. Keep the conversation natural and engaging
-6. After 5-7 questions, provide a brief summary and end positively
+3. Listen carefully to responses.
+4. Keep the conversation natural and engaging.
 
 Guidelines:
 - Be friendly but professional
-- Give specific, constructive feedback
-- Offer hints when needed: "That's a good start! Think about..."
-- Encourage elaboration: "Can you tell me more about that?"
-- End with: "Great work today! You've shown strong knowledge in [specific areas]. Good luck with your application!"
+- End with: "Great work today! Thanks for your time."
 
-Keep responses concise and natural. Focus on making the candidate comfortable while assessing their knowledge.
 `,
             },
           ],
@@ -955,6 +1071,7 @@ Keep responses concise and natural. Focus on making the candidate comfortable wh
       }
 
       console.log('Calling vapi.start() with assistant options')
+      resetDetectionMetrics()
       startLiveDetection()
       await vapi.start(assistantOptions)
     } catch (error) {
@@ -968,19 +1085,47 @@ Keep responses concise and natural. Focus on making the candidate comfortable wh
     }
   }
 
-  const stopInterview = () => {
-    if (DISABLE_VAPI_FOR_TESTING) {
-      setIsCallActive(false)
-      setIsPaused(false)
-      toast.info('Testing mode: interview stopped.')
+  const stopInterview = useCallback(
+    (options = {}) => {
+      const { suppressToast = false } = options
+
+      if (DISABLE_VAPI_FOR_TESTING) {
+        setIsCallActive(false)
+        setIsPaused(false)
+        if (!suppressToast) {
+          toast.info('Testing mode: interview stopped.')
+        }
+        return
+      }
+
+      if (vapi) {
+        vapi.stop()
+        setIsCallActive(false)
+      }
+    },
+    [vapi],
+  )
+
+  useEffect(() => {
+    if (!isCallActive) {
+      autoStoppedByTabLimitRef.current = false
       return
     }
 
-    if (vapi) {
-      vapi.stop()
-      setIsCallActive(false)
+    const uiSwitchCount = Number(focusMetrics?.tabSwitches?.uiSwitchCount || 0)
+
+    if (uiSwitchCount > maxTabSwitches && !autoStoppedByTabLimitRef.current) {
+      autoStoppedByTabLimitRef.current = true
+      toast.error(
+        `Interview stopped: tab switches exceeded (${uiSwitchCount}/${maxTabSwitches}).`,
+        {
+          description: 'Maximum allowed tab switches reached.',
+          duration: 5000,
+        },
+      )
+      stopInterview({ suppressToast: true })
     }
-  }
+  }, [isCallActive, focusMetrics, maxTabSwitches, stopInterview])
 
   const toggleMute = () => {
     if (DISABLE_VAPI_FOR_TESTING) {
@@ -1060,6 +1205,10 @@ Keep responses concise and natural. Focus on making the candidate comfortable wh
 
   const distractionRate = focusMetrics.eyeMovement.distractionRate || 0
   const eyeFocusPercent = Math.max(0, Math.round((1 - distractionRate) * 100))
+  const detectionAverageScore =
+    detectionSampleCount > 0
+      ? Math.round((detectionTotalScore / detectionSampleCount) * 100) / 100
+      : 0
   const candidateFocusStatus = focusMetrics.tabSwitches.isCurrentlyAway
     ? 'Away from interview tab'
     : focusMetrics.eyeMovement.totalSamples === 0
@@ -1364,8 +1513,16 @@ Keep responses concise and natural. Focus on making the candidate comfortable wh
                       <p className='text-lg font-bold text-slate-900 leading-tight'>
                         {detectionScore}
                       </p>
+                      <p className='text-xs text-slate-600 mt-1'>
+                        Total: <strong>{detectionTotalScore}</strong> | Avg:{' '}
+                        <strong>{detectionAverageScore}</strong>
+                      </p>
+                      <p className='text-xs text-slate-600'>
+                        Max: <strong>{detectionMaxScore}</strong> | Samples:{' '}
+                        <strong>{detectionSampleCount}</strong>
+                      </p>
                       <p className='text-xs text-slate-500'>
-                        {isDetectionRunning ? 'Monitoring every 5s' : 'Stopped'}
+                        {isDetectionRunning ? 'Monitoring' : 'Stopped'}
                       </p>
                       <p className='text-xs text-slate-700 mt-2'>
                         Focus: <strong>{candidateFocusStatus}</strong>
