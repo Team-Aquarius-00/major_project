@@ -7,45 +7,22 @@ export async function POST(
 ) {
   try {
     const { interview_id } = await params
-    const body = await request.json()
-    const { tracking } = body
-
-    // Fetch current interview to get existing tracking data
-    const currentInterview = await prisma.interview.findUnique({
+    // Keep endpoint for backward compatibility; Interview model no longer stores tracking JSON.
+    const interview = await prisma.interview.findUnique({
       where: { interview_id: interview_id },
-      select: { tracking: true },
+      select: { id: true },
     })
 
-    if (!currentInterview) {
+    if (!interview) {
       return NextResponse.json(
         { success: false, error: 'Interview not found' },
         { status: 404 },
       )
     }
 
-    // Merge new tracking data with existing data (if any)
-    let mergedTracking = tracking
-    if (
-      currentInterview.tracking &&
-      typeof currentInterview.tracking === 'object'
-    ) {
-      mergedTracking = {
-        ...currentInterview.tracking,
-        ...tracking,
-      }
-    }
-
-    // Update interview with merged tracking data
-    const interview = await prisma.interview.update({
-      where: { interview_id: interview_id },
-      data: {
-        tracking: mergedTracking,
-      },
-    })
-
     return NextResponse.json({
       success: true,
-      message: 'Interview tracking updated',
+      message: 'Tracking payload received',
       data: interview,
     })
   } catch (error: unknown) {

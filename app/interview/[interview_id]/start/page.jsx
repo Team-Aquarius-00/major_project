@@ -11,18 +11,12 @@ import { InterviewDataContext } from '../../../../context/InterviewDataContext'
 import {
   Mic,
   MicOff,
-  Phone,
   PhoneOff,
   Timer,
   Volume2,
   VolumeX,
-  Settings,
   AlertTriangle,
-  CheckCircle,
   Play,
-  Pause,
-  RotateCcw,
-  User,
   Bot,
   MessageCircle,
   Video,
@@ -30,11 +24,8 @@ import {
   Camera,
   Eye,
   Monitor,
-  Target,
   Activity,
-  FileText,
 } from 'lucide-react'
-import Image from 'next/image'
 import Vapi from '@vapi-ai/web'
 import AlertConfirmation from './_components/AlertConfirmation'
 import { toast } from 'sonner'
@@ -42,13 +33,9 @@ import { Button } from '@/components/ui/button'
 import InterviewTrackingService from '@/services/interviewTrackingService'
 import InterviewFeedback from './_components/InterviewFeedback'
 import { useInterviewAlerts } from '@/hooks/useInterviewAlerts'
-import { InterviewAlerts } from '@/components/InterviewAlerts'
-
-// Keep false to run the real Vapi voice interview flow.
-const DISABLE_VAPI_FOR_TESTING = false
 
 function StartInterview() {
-  const { interviewInfo, setInterviewInfo } = useContext(InterviewDataContext)
+  const { interviewInfo } = useContext(InterviewDataContext)
   const { interview_id } = useParams()
   const router = useRouter()
   const [vapi, setVapi] = useState(null)
@@ -148,32 +135,6 @@ function StartInterview() {
       }
     }
   }, [interviewInfo])
-
-  // Manage real-time tracking updates to database
-  useEffect(() => {
-    if (!isCallActive || !alerts || alerts.length === 0) return
-
-    // Send tracking updates to database every 10 seconds
-    const trackingInterval = setInterval(async () => {
-      try {
-        const currentMetrics = trackingService?.getFocusMetrics()
-        await fetch(`/api/interview/${interview_id}/tracking`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            timestamp: new Date().toISOString(),
-            alerts: alerts,
-            metrics: currentMetrics,
-            duration: callDuration,
-          }),
-        }).catch((e) => console.debug('Tracking update skipped:', e.message))
-      } catch (error) {
-        console.debug('Failed to send tracking update:', error)
-      }
-    }, 10000)
-
-    return () => clearInterval(trackingInterval)
-  }, [isCallActive, alerts, callDuration, interview_id, trackingService])
 
   // Manage tracking when call status changes
   useEffect(() => {
@@ -518,15 +479,6 @@ function StartInterview() {
 
     if (!interview_id) {
       setError('Invalid interview session. Please start over.')
-      setIsLoading(false)
-      return
-    }
-
-    if (DISABLE_VAPI_FOR_TESTING) {
-      const questions = interviewInfo?.interviewData?.questionList || []
-      setTotalQuestions(questions.length)
-      setVapi(null)
-      setError(null)
       setIsLoading(false)
       return
     }
@@ -996,57 +948,6 @@ function StartInterview() {
           body: JSON.stringify({
             duration,
             completed: true,
-            feedback: {
-              tab_switches: finalMetrics?.tabSwitches?.uiSwitchCount || 0,
-              gaze_alerts: finalMetrics?.eyeMovement?.distractions || 0,
-              focus_score: finalMetrics?.tabSwitches?.focusScore || 0,
-              detection_score_latest: detectionScore,
-              detection_score_total: detectionTotalScore,
-              detection_score_average: averageDetectionScore,
-              detection_score_max: detectionMaxScore,
-              detection_samples: detectionSampleCount,
-              transcript: conversationLogRef.current,
-              qa_pairs: qaPairsRef.current,
-              llm_summary: llmAnalysis?.summary || null,
-              recommendation: llmAnalysis?.recommendation || null,
-              strengths: llmAnalysis?.strengths || [],
-              improvement_areas: llmAnalysis?.improvementAreas || [],
-            },
-            scoring: {
-              questions_answered: answeredQuestions,
-              total_questions: configuredQuestions,
-              time_per_question: duration / safeAnsweredQuestions,
-              simple_final_score: simpleFinalScore,
-              llm_overall_score: llmAnalysis?.overallScore ?? null,
-              llm_category_scores: llmAnalysis?.categoryScores || null,
-              answer_scores: perAnswerScores,
-              question_scores: llmAnalysis?.questionEvaluations || [],
-              proctoring_metrics: {
-                detection_score_total: detectionTotalScore,
-                detection_score_average: averageDetectionScore,
-                detection_score_max: detectionMaxScore,
-                detection_samples: detectionSampleCount,
-                screen_focus_percentage: screenFocusPercent,
-                eye_focus_percentage: eyeFocusPercentFinal,
-                tab_switches: tabSwitchCount,
-                detection_risk_percentage: Math.round(detectionRiskPercent),
-                tab_switch_risk_percentage: Math.round(tabSwitchRiskPercent),
-                weights: proctoringWeights,
-                final_integrity_score: finalIntegrityScore,
-                final_cheating_risk_score: finalCheatingRiskScore,
-              },
-            },
-            tracking: {
-              final_metrics: finalMetrics,
-              alerts: alertsRef.current,
-              detection: {
-                latest_score: detectionScore,
-                total_score: detectionTotalScore,
-                average_score: averageDetectionScore,
-                max_score: detectionMaxScore,
-                samples: detectionSampleCount,
-              },
-            },
           }),
         })
 
@@ -1161,14 +1062,6 @@ function StartInterview() {
   }
 
   const startCall = async () => {
-    if (DISABLE_VAPI_FOR_TESTING) {
-      resetDetectionMetrics()
-      setIsCallActive(true)
-      setIsPaused(false)
-      toast.info('Testing mode: Vapi disabled. Focus tracking is active.')
-      return
-    }
-
     if (!vapi || !interviewInfo) {
       console.error('Cannot start call:', {
         vapiExists: !!vapi,
@@ -1214,7 +1107,7 @@ You are an AI voice assistant conducting a professional interview for the positi
 1. Begin with a warm, professional greeting
 2. Ask one question at a time from this list: ${questionList}
 3. Listen carefully to responses.
-4. Keep the conversation natural and engaging.
+4. Keep the conversation natural.
 
 Guidelines:
 - Be friendly but professional
@@ -1241,26 +1134,12 @@ Guidelines:
     }
   }
 
-  const stopInterview = useCallback(
-    (options = {}) => {
-      const { suppressToast = false } = options
-
-      if (DISABLE_VAPI_FOR_TESTING) {
-        setIsCallActive(false)
-        setIsPaused(false)
-        if (!suppressToast) {
-          toast.info('Testing mode: interview stopped.')
-        }
-        return
-      }
-
-      if (vapi) {
-        vapi.stop()
-        setIsCallActive(false)
-      }
-    },
-    [vapi],
-  )
+  const stopInterview = useCallback(() => {
+    if (vapi) {
+      vapi.stop()
+      setIsCallActive(false)
+    }
+  }, [vapi])
 
   useEffect(() => {
     if (!isCallActive) {
@@ -1284,19 +1163,6 @@ Guidelines:
   }, [isCallActive, focusMetrics, maxTabSwitches, stopInterview])
 
   const toggleMute = () => {
-    if (DISABLE_VAPI_FOR_TESTING) {
-      setIsMuted((prev) => {
-        const next = !prev
-        toast[next ? 'info' : 'success'](
-          next
-            ? 'Microphone muted (testing mode)'
-            : 'Microphone unmuted (testing mode)',
-        )
-        return next
-      })
-      return
-    }
-
     if (vapi) {
       if (isMuted) {
         if (typeof vapi.unmute === 'function') {
@@ -1320,19 +1186,6 @@ Guidelines:
   }
 
   const togglePause = () => {
-    if (DISABLE_VAPI_FOR_TESTING) {
-      setIsPaused((prev) => {
-        const next = !prev
-        toast[next ? 'info' : 'success'](
-          next
-            ? 'Interview paused (testing mode)'
-            : 'Interview resumed (testing mode)',
-        )
-        return next
-      })
-      return
-    }
-
     if (vapi) {
       if (isPaused) {
         if (typeof vapi.resume === 'function') {
@@ -1495,19 +1348,6 @@ Guidelines:
         </div>
       </div>
 
-      {/* Real-time Alerts Section
-      {isCallActive && (
-        <div className='border-b border-slate-200/70 bg-white/70 backdrop-blur-sm'>
-          <div className='max-w-7xl mx-auto px-4 sm:px-6 py-3'>
-            <div className='inline-flex items-center gap-2 mb-3 text-sm font-medium text-slate-700'>
-              <Activity className='h-4 w-4 text-cyan-600' />
-              Live Integrity Alerts
-            </div>
-            <InterviewAlerts alerts={alerts} />
-          </div>
-        </div>
-      )} */}
-
       {/* Main Content */}
       <div className='relative max-w-7xl mx-auto px-4 sm:px-6 py-8'>
         <div className='mb-6 rounded-2xl border border-white/60 bg-white/80 backdrop-blur-sm px-5 py-4 shadow-sm'>
@@ -1536,16 +1376,6 @@ Guidelines:
                   {interviewInfo?.userName || 'Candidate'}
                 </h2>
                 <p className='text-sm text-slate-600'>Live candidate stage</p>
-              </div>
-              <div className='flex items-center gap-2 text-xs sm:text-sm'>
-                <span className='inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-full bg-slate-100 text-slate-700 font-medium'>
-                  <Target className='h-3.5 w-3.5' />
-                  Focus {eyeFocusPercent}%
-                </span>
-                <span className='inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-full bg-violet-100 text-violet-700 font-medium'>
-                  <FileText className='h-3.5 w-3.5' />Q{currentQuestion}/
-                  {totalQuestions}
-                </span>
               </div>
             </div>
 
@@ -1629,10 +1459,6 @@ Guidelines:
                 </div>
               )}
 
-              <div className='text-sm text-slate-500'>
-                Question {currentQuestion} of {totalQuestions}
-              </div>
-
               {isCallActive && (
                 <div className='mt-5 p-4 bg-gradient-to-r from-slate-50 to-blue-50 rounded-2xl border border-slate-200 text-left'>
                   <div className='flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between'>
@@ -1653,7 +1479,7 @@ Guidelines:
                         </div>
                       ) : (
                         <p className='text-sm text-slate-600 mb-2'>
-                          No target objects detected
+                          No objects detected
                         </p>
                       )}
 
@@ -1828,37 +1654,6 @@ Guidelines:
             </div>
           </div>
         </div>
-
-        {/* Test Controls for Development - DISABLED */}
-
-        {/* Interview Progress */}
-        {isCallActive && (
-          <div className='mt-7 bg-white/95 rounded-2xl shadow-lg border border-white/60 ring-1 ring-slate-200/70 p-6'>
-            <h3 className='text-lg font-semibold text-slate-900 mb-4 text-center'>
-              Interview Progress
-            </h3>
-            <div className='grid grid-cols-1 md:grid-cols-3 gap-4'>
-              <div className='text-center p-4 bg-sky-50 rounded-xl border border-sky-100'>
-                <div className='text-2xl font-bold text-sky-700'>
-                  {currentQuestion}
-                </div>
-                <div className='text-sm text-sky-700'>Questions Asked</div>
-              </div>
-              <div className='text-center p-4 bg-emerald-50 rounded-xl border border-emerald-100'>
-                <div className='text-2xl font-bold text-emerald-700'>
-                  {totalQuestions - currentQuestion}
-                </div>
-                <div className='text-sm text-emerald-700'>Remaining</div>
-              </div>
-              <div className='text-center p-4 bg-indigo-50 rounded-xl border border-indigo-100'>
-                <div className='text-2xl font-bold text-indigo-700'>
-                  {Math.round(interviewProgress)}%
-                </div>
-                <div className='text-sm text-indigo-700'>Complete</div>
-              </div>
-            </div>
-          </div>
-        )}
 
         {/* Control Panel */}
         <div className='mt-7 bg-white/95 rounded-2xl shadow-lg border border-white/60 ring-1 ring-slate-200/70 p-6'>

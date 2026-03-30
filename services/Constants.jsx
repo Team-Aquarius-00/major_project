@@ -22,14 +22,14 @@ export const SideBarOptions = [
     icon: Calendar,
     path: '/schedule-interview',
     section: 'Interviews',
-    badge: 4,
+    // badge: 4,
   },
   {
     name: 'All Interview',
     icon: List,
     path: '/all-interview',
     section: 'Interviews',
-    badge: 2,
+    // badge: 2,
   },
   {
     name: 'Billings',
@@ -87,7 +87,7 @@ Format your response in JSON format with array list of questions.
 format: interviewQuestions=[
 {
 question:'',
-type:'Technical/Behavioral/Experience/Problem Solving/Leadership'
+type:'{{type}}'
 },
 {
 ...

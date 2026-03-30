@@ -8,15 +8,12 @@ export async function POST(
   try {
     const { interview_id } = await params
     const body = await request.json()
-    const { feedback, scoring, tracking, completed } = body
+    const { completed } = body
 
     // Update interview with results
     const interview = await prisma.interview.update({
       where: { interview_id: interview_id },
       data: {
-        feedback: feedback || null,
-        scoring: scoring || null,
-        tracking: tracking || null,
         completed: completed || true,
       },
     })

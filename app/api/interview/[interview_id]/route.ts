@@ -38,14 +38,10 @@ export async function PATCH(
   try {
     const { interview_id } = await params
     const body = await request.json()
-    const { feedback, scoring, tracking, completed, job_position, duration } =
-      body
+    const { completed, job_position, duration } = body
 
     // Build update data with only provided fields
     const updateData: Record<string, unknown> = {}
-    if (feedback !== undefined) updateData.feedback = feedback
-    if (scoring !== undefined) updateData.scoring = scoring
-    if (tracking !== undefined) updateData.tracking = tracking
     if (completed !== undefined) updateData.completed = completed
     if (job_position !== undefined) updateData.job_position = job_position
     if (duration !== undefined) updateData.duration = duration

@@ -17,9 +17,6 @@ model Interview {
   adminEmail      String?   @map("userEmail")
   completed       Boolean?
   created_at      DateTime? @default(now()) @db.Timestamptz(6)
-  feedback        Json?
-  scoring         Json?
-  tracking        Json?
   type            String[]
   admin_id        Int?      @map("user_id")
   admin           Admin?    @relation(fields: [admin_id], references: [id])
