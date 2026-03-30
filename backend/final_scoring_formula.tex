@@ -1,0 +1,54 @@
+\documentclass[11pt]{article}
+\usepackage[a4paper,margin=1in]{geometry}
+\usepackage{amsmath}
+\usepackage{enumitem}
+
+\title{Final Interview Scoring Formula}
+\date{}
+
+\begin{document}
+\maketitle
+
+\section*{Definitions}
+\begin{itemize}[leftmargin=1.2em]
+  \item $s_i$: score of each answered question (0--100)
+  \item $N$: number of analyzed answers
+  \item $D = 100 - \text{DetectionRiskPercent}$
+  \item $S = \text{ScreenFocusPercent}$
+  \item $E = \text{EyeFocusPercent}$
+  \item $T = 100 - \text{TabSwitchRiskPercent}$
+\end{itemize}
+
+\section*{Answer Score}
+\[
+\text{AnswerScore} = \operatorname{round}\left(\frac{1}{N}\sum_{i=1}^{N} s_i\right)
+\]
+
+\section*{Integrity Score}
+\[
+\text{IntegrityScore} = \operatorname{round}\left(
+0.35 \cdot D +
+0.25 \cdot S +
+0.25 \cdot E +
+0.15 \cdot T
+\right)
+\]
+
+\section*{Final Manager Score}
+\[
+\text{FinalScore} = \operatorname{round}\left(
+0.80 \cdot \text{AnswerScore} +
+0.20 \cdot \text{IntegrityScore}
+\right)
+\]
+
+\section*{Database Fields}
+Store these values in your scoring JSON:
+\begin{itemize}[leftmargin=1.2em]
+  \item \texttt{scoring.answer\_scores}: per-question scores
+  \item \texttt{scoring.simple\_final\_score}: AnswerScore
+  \item \texttt{scoring.proctoring\_metrics.final\_integrity\_score}: IntegrityScore
+  \item \texttt{scoring.final\_manager\_score}: FinalScore
+\end{itemize}
+
+\end{document}
