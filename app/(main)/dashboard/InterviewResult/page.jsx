@@ -189,7 +189,8 @@ function InterviewResultPage() {
                     : 'border-slate-300 bg-white text-slate-700 hover:border-slate-400'
                 }`}
               >
-                {item.job_position} ({item.interview_count})
+                {/* {item.job_position} ({item.interview_count}) */}
+                {item.job_position}
               </button>
             ))}
           </div>

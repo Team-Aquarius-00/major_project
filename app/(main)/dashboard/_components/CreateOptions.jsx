@@ -1,4 +1,4 @@
-import { Phone, Video } from 'lucide-react'
+import { ListChecks, Video } from 'lucide-react'
 import Link from 'next/link'
 import React from 'react'
 
@@ -48,23 +48,26 @@ function CreateOptions() {
           </div>
         </Link>
 
-        <div className='group relative overflow-hidden bg-gradient-to-br from-emerald-50 to-teal-50 border border-emerald-200/50 rounded-2xl p-8 transition-all duration-300 hover:shadow-xl hover:shadow-emerald-100/50 hover:-translate-y-1 hover:border-emerald-300/70'>
+        <Link
+          href={'/all-interview'}
+          className='group relative overflow-hidden bg-gradient-to-br from-emerald-50 to-teal-50 border border-emerald-200/50 rounded-2xl p-8 transition-all duration-300 hover:shadow-xl hover:shadow-emerald-100/50 hover:-translate-y-1 hover:border-emerald-300/70'
+        >
           <div className='absolute top-0 right-0 w-32 h-32 bg-gradient-to-bl from-emerald-400/10 to-transparent rounded-full -translate-y-16 translate-x-16'></div>
           <div className='relative z-10'>
             <div className='inline-flex items-center justify-center w-16 h-16 bg-gradient-to-br from-emerald-500 to-emerald-600 text-white rounded-2xl mb-6 shadow-lg shadow-emerald-500/25'>
-              <Phone className='h-8 w-8' />
+              <ListChecks className='h-8 w-8' />
             </div>
             <h3 className='text-xl font-bold text-gray-900 mb-3 group-hover:text-emerald-700 transition-colors'>
-              Phone Screening
+              Manage Interviews
             </h3>
             <p className='text-gray-600 leading-relaxed mb-6'>
-              Conduct initial phone screenings to assess candidate fit before
-              scheduling full interviews
+              Review scheduled sessions, track statuses, and monitor completed
+              interview performance in one place
             </p>
             <div className='flex items-center text-emerald-600 font-medium group-hover:text-emerald-700 transition-colors'>
-              <span>Coming Soon</span>
+              <span>View Interviews</span>
               <svg
-                className='w-4 h-4 ml-2'
+                className='w-4 h-4 ml-2 transform group-hover:translate-x-1 transition-transform'
                 fill='none'
                 stroke='currentColor'
                 viewBox='0 0 24 24'
@@ -73,12 +76,12 @@ function CreateOptions() {
                   strokeLinecap='round'
                   strokeLinejoin='round'
                   strokeWidth={2}
-                  d='M12 6v6m0 0v6m0-6h6m-6 0H6'
+                  d='M9 5l7 7-7 7'
                 />
               </svg>
             </div>
           </div>
-        </div>
+        </Link>
       </div>
 
       <div className='text-center mt-8'>

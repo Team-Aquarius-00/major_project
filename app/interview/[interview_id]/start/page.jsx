@@ -1309,7 +1309,8 @@ You are an AI voice assistant conducting a professional interview for the positi
 1. Begin with a warm, professional greeting
 2. Ask one question at a time from this list: ${questionList}
 3. Listen carefully to responses.
-4. Keep the conversation natural.
+4. Only ask question and listen to the answers. Do not give feedback instantly.
+
 
 Guidelines:
 - Be friendly but professional
@@ -1862,7 +1863,7 @@ Guidelines:
                 </div>
               </div>
 
-              <div className='mt-4 rounded-xl bg-white/10 p-4'>
+              {/* <div className='mt-4 rounded-xl bg-white/10 p-4'>
                 <p className='text-[11px] uppercase tracking-wide text-white/60'>
                   Candidate
                 </p>
@@ -1890,7 +1891,7 @@ Guidelines:
                 <p className='mt-3 text-[11px] text-white/60'>
                   Analyzed answers: {analyzedAnswerCount}
                 </p>
-              </div>
+              </div> */}
             </div>
           </div>
         </div>

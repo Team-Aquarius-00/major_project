@@ -139,7 +139,7 @@ function InterviewLink({ interview_id, formData, onCreateNewInterview }) {
 
         <hr className='my-8 border-gray-100' />
 
-        <div className='grid grid-cols-1 md:grid-cols-3 gap-6'>
+        {/* <div className='grid grid-cols-1 md:grid-cols-3 gap-6'>
           <div className='flex items-center gap-3 p-3 bg-gray-50 rounded-lg'>
             <div className='p-2 bg-blue-100 rounded-lg'>
               <Clock className='h-4 w-4 text-blue-600' />
@@ -173,7 +173,7 @@ function InterviewLink({ interview_id, formData, onCreateNewInterview }) {
               </p>
             </div>
           </div>
-        </div>
+        </div> */}
       </div>
 
       <div className='w-full bg-white p-6 rounded-2xl shadow-sm border border-gray-100 mb-6'>
