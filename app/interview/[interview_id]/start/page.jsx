@@ -1672,7 +1672,7 @@ Guidelines:
               </div>
 
               {/* Progress Bar */}
-              {isCallActive && (
+              {/* {isCallActive && (
                 <div className='w-full bg-slate-200 rounded-full h-3 mb-4'>
                   <div
                     ref={progressRef}
@@ -1680,7 +1680,7 @@ Guidelines:
                     style={{ width: `${interviewProgress}%` }}
                   ></div>
                 </div>
-              )}
+              )} */}
 
               {isCallActive && (
                 <div className='mt-5 p-4 bg-gradient-to-r from-slate-50 to-blue-50 rounded-2xl border border-slate-200 text-left'>
