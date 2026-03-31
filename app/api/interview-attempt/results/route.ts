@@ -18,6 +18,10 @@ type InterviewResultRow = {
   detected_non_person_classes: string[]
   detected_class_counts: Record<string, number>
   detection_snapshot_urls: string[]
+  detection_snapshots: Array<{
+    url: string
+    classes: string[]
+  }>
   completed_at: Date | null
 }
 
@@ -74,6 +78,35 @@ function asSnapshotUrls(value: unknown): string[] {
       return String(url || '').trim()
     })
     .filter((url) => url.length > 0)
+}
+
+function asSnapshotEntries(
+  value: unknown,
+): Array<{ url: string; classes: string[] }> {
+  if (!Array.isArray(value)) return []
+
+  return value
+    .map((entry) => {
+      if (typeof entry === 'string') {
+        const url = String(entry || '').trim()
+        if (!url) return null
+        return { url, classes: [] }
+      }
+
+      if (!entry || typeof entry !== 'object') return null
+
+      const source = entry as Record<string, unknown>
+      const url = String(source.url || '').trim()
+      if (!url) return null
+
+      return {
+        url,
+        classes: asStringArray(source.classes),
+      }
+    })
+    .filter((entry): entry is { url: string; classes: string[] } =>
+      Boolean(entry),
+    )
 }
 
 export async function GET(request: NextRequest) {
@@ -139,6 +172,9 @@ export async function GET(request: NextRequest) {
       const detectionSnapshotUrls = asSnapshotUrls(
         trackingDetection.evidence_snapshots,
       )
+      const detectionSnapshots = asSnapshotEntries(
+        trackingDetection.evidence_snapshots,
+      )
 
       return {
         attempt_id: item.id,
@@ -173,6 +209,7 @@ export async function GET(request: NextRequest) {
         detected_non_person_classes: nonPersonClasses,
         detected_class_counts: detectedClassCounts,
         detection_snapshot_urls: detectionSnapshotUrls,
+        detection_snapshots: detectionSnapshots,
         completed_at: item.completed_at,
       }
     })

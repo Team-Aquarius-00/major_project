@@ -316,12 +316,17 @@ async def detect(request: Request, file: UploadFile = File(...)):
         score += 10
 
     non_person_classes = sorted({cls for cls in classes if cls != "person"})
+    snapshot_reasons = list(non_person_classes)
+    if person_count > 1:
+        snapshot_reasons.append("multiple_persons")
+
+    snapshot_classes = sorted(set(snapshot_reasons))
     snapshot_saved = False
     snapshot_url = None
     snapshot_full_url = None
 
-    # Persist frame evidence only when non-person objects are detected.
-    if non_person_classes:
+    # Persist frame evidence when suspicious objects appear or multiple people are present.
+    if snapshot_classes:
         filename = f"{datetime.utcnow().strftime('%Y%m%dT%H%M%S%f')}_{uuid4().hex[:8]}.jpg"
         snapshot_path = SNAPSHOT_DIR / filename
         snapshot_saved = bool(cv2.imwrite(str(snapshot_path), frame))
@@ -348,5 +353,5 @@ async def detect(request: Request, file: UploadFile = File(...)):
         "snapshot_saved": snapshot_saved,
         "snapshot_url": snapshot_url,
         "snapshot_full_url": snapshot_full_url,
-        "snapshot_classes": non_person_classes,
+        "snapshot_classes": snapshot_classes,
     }

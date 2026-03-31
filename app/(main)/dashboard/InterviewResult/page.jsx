@@ -3,6 +3,19 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useUser } from '@/app/provider'
 
+const formatSnapshotClassLabel = (value) => {
+  const normalized = String(value || '')
+    .trim()
+    .toLowerCase()
+  if (!normalized) return ''
+  if (normalized === 'multiple_persons') return 'Multiple persons detected'
+
+  return normalized
+    .split('_')
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(' ')
+}
+
 function InterviewResultPage() {
   const { user } = useUser()
   const [rows, setRows] = useState([])
@@ -139,6 +152,29 @@ function InterviewResultPage() {
       finalScores.reduce((sum, value) => sum + value, 0) / finalScores.length
     return Math.round(avg)
   }, [displayedRows])
+
+  const resolveSnapshots = (item) => {
+    if (
+      Array.isArray(item?.detection_snapshots) &&
+      item.detection_snapshots.length
+    ) {
+      return item.detection_snapshots
+        .map((entry) => ({
+          url: String(entry?.url || '').trim(),
+          classes: Array.isArray(entry?.classes) ? entry.classes : [],
+        }))
+        .filter((entry) => entry.url)
+    }
+
+    if (Array.isArray(item?.detection_snapshot_urls)) {
+      return item.detection_snapshot_urls
+        .map((url) => String(url || '').trim())
+        .filter(Boolean)
+        .map((url) => ({ url, classes: [] }))
+    }
+
+    return []
+  }
 
   const onSearch = (event) => {
     event.preventDefault()
@@ -297,7 +333,7 @@ function InterviewResultPage() {
                   Analyzed Answers
                 </th>
                 <th className='px-4 py-3 text-left font-semibold text-slate-600'>
-                  Integrity Inputs (D/S/E/T)
+                  Integrity Inputs (S/E/T)
                 </th>
                 <th className='px-4 py-3 text-left font-semibold text-slate-600'>
                   Detected Objects (Non-Person)
@@ -349,8 +385,8 @@ function InterviewResultPage() {
                 !error &&
                 displayedRows.map((item) => (
                   <tr
-                    key={`${item.interview_id}-${item.attempt_id}`}
-                    className='hover:bg-slate-50'
+                    key={item.attempt_id}
+                    className='border-b border-slate-100 last:border-b-0'
                   >
                     <td className='px-4 py-3 font-medium text-slate-900'>
                       {item.interview_id}
@@ -374,8 +410,7 @@ function InterviewResultPage() {
                     </td>
                     <td className='px-4 py-3 text-slate-700'>
                       <span className='text-xs'>
-                        D: {item?.integrity_components?.D ?? '--'} / S:{' '}
-                        {item?.integrity_components?.S ?? '--'} / E:{' '}
+                        S: {item?.integrity_components?.S ?? '--'} / E:{' '}
                         {item?.integrity_components?.E ?? '--'} / T:{' '}
                         {item?.integrity_components?.T ?? '--'}
                       </span>
@@ -401,51 +436,98 @@ function InterviewResultPage() {
                       )}
                     </td>
                     <td className='px-4 py-3 text-slate-700'>
-                      {Array.isArray(item?.detection_snapshot_urls) &&
-                      item.detection_snapshot_urls.length > 0 ? (
-                        <div className='space-y-2'>
-                          <a
-                            href={item.detection_snapshot_urls[0]}
-                            target='_blank'
-                            rel='noreferrer'
-                            className='inline-block'
-                          >
-                            <img
-                              src={item.detection_snapshot_urls[0]}
-                              alt='Cheating evidence frame'
-                              className='h-16 w-24 rounded border border-slate-300 object-cover hover:opacity-90'
-                            />
-                          </a>
+                      {(() => {
+                        const snapshots = resolveSnapshots(item)
+                        if (!snapshots.length) {
+                          return '--'
+                        }
 
-                          {item.detection_snapshot_urls.length > 1 && (
-                            <details className='text-xs'>
-                              <summary className='cursor-pointer text-sky-700 hover:text-sky-800'>
-                                View all ({item.detection_snapshot_urls.length})
-                              </summary>
-                              <div className='mt-2 grid grid-cols-2 gap-2'>
-                                {item.detection_snapshot_urls.map(
-                                  (url, index) => (
-                                    <a
-                                      key={`${url}-${index}`}
-                                      href={url}
-                                      target='_blank'
-                                      rel='noreferrer'
+                        const firstSnapshot = snapshots[0]
+
+                        return (
+                          <div className='space-y-2'>
+                            <a
+                              href={firstSnapshot.url}
+                              target='_blank'
+                              rel='noreferrer'
+                              className='inline-block'
+                            >
+                              <img
+                                src={firstSnapshot.url}
+                                alt='Cheating evidence frame'
+                                className='h-16 w-24 rounded border border-slate-300 object-cover hover:opacity-90'
+                              />
+                            </a>
+
+                            {Array.isArray(firstSnapshot.classes) &&
+                            firstSnapshot.classes.length > 0 ? (
+                              <div className='flex flex-wrap gap-1'>
+                                {firstSnapshot.classes.map((cls) => {
+                                  const label = formatSnapshotClassLabel(cls)
+                                  if (!label) return null
+
+                                  return (
+                                    <span
+                                      key={`first-${firstSnapshot.url}-${cls}`}
+                                      className='inline-flex rounded-full bg-rose-100 px-2 py-0.5 text-xs font-medium text-rose-800'
                                     >
-                                      <img
-                                        src={url}
-                                        alt={`Cheating evidence ${index + 1}`}
-                                        className='h-14 w-20 rounded border border-slate-300 object-cover'
-                                      />
-                                    </a>
-                                  ),
-                                )}
+                                      {label}
+                                    </span>
+                                  )
+                                })}
                               </div>
-                            </details>
-                          )}
-                        </div>
-                      ) : (
-                        '--'
-                      )}
+                            ) : null}
+
+                            {snapshots.length > 1 && (
+                              <details className='text-xs'>
+                                <summary className='cursor-pointer text-sky-700 hover:text-sky-800'>
+                                  View all ({snapshots.length})
+                                </summary>
+                                <div className='mt-2 grid grid-cols-2 gap-2'>
+                                  {snapshots.map((snapshot, index) => (
+                                    <div
+                                      key={`${snapshot.url}-${index}`}
+                                      className='space-y-1'
+                                    >
+                                      <a
+                                        href={snapshot.url}
+                                        target='_blank'
+                                        rel='noreferrer'
+                                      >
+                                        <img
+                                          src={snapshot.url}
+                                          alt={`Cheating evidence ${index + 1}`}
+                                          className='h-14 w-20 rounded border border-slate-300 object-cover'
+                                        />
+                                      </a>
+
+                                      {Array.isArray(snapshot.classes) &&
+                                      snapshot.classes.length > 0 ? (
+                                        <div className='flex flex-wrap gap-1'>
+                                          {snapshot.classes.map((cls) => {
+                                            const label =
+                                              formatSnapshotClassLabel(cls)
+                                            if (!label) return null
+
+                                            return (
+                                              <span
+                                                key={`${snapshot.url}-${cls}`}
+                                                className='inline-flex rounded-full bg-rose-100 px-2 py-0.5 text-[10px] font-medium text-rose-800'
+                                              >
+                                                {label}
+                                              </span>
+                                            )
+                                          })}
+                                        </div>
+                                      ) : null}
+                                    </div>
+                                  ))}
+                                </div>
+                              </details>
+                            )}
+                          </div>
+                        )
+                      })()}
                     </td>
                   </tr>
                 ))}
