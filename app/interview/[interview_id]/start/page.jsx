@@ -1076,7 +1076,7 @@ function StartInterview() {
         const averageDetectionScore =
           detectionSampleCount > 0
             ? Number((detectionTotalScore / detectionSampleCount).toFixed(2))
-            : 0
+            : 20
 
         // Detection score can reach up to 125 per frame in the backend logic.
         const detectionRiskPercent = clampPercent(
